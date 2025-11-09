@@ -1,78 +1,35 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+'''''
+El decorador @dataclass automatiza la generación de métodos comunes en las clases de Python,
+como el constructor (init), el representador (repr) y el comparador (eq),
+'''
 @dataclass
 class FundFlowRecord:
     """
-    Clase que representa un registro individual del seguimiento de fondos en la cadena de bloques.
-    Cada instancia corresponde a un 'hop' o evento en el flujo de bitcoins, con atributos que describen
-    los datos relevantes para el análisis forense del movimiento de fondos.
+    Representa un registro individual en el seguimiento del flujo de fondos en blockchain.
+    Cada registro describe un 'hop' del fondo, con detalles sobre origen y destino,
+    clasificación, y métricas para análisis forense.
     """
 
-    # Dirección o caso semilla desde donde se empieza el rastreo.
-    seed_case: str
+    seed_case: str              # Dirección o caso semilla del rastreo
+    path_id: int               # ID del camino o ruta seguida por el flujo
+    hop: int                   # Número ordenado del salto dentro del path
+    follow: bool               # Indica si continuar siguiendo el flujo por este hop
 
-    # Identificador de la ruta o camino que sigue el flujo de fondos.
-    path_id: int
+    input: str                 # Dirección origen en este hop
+    output: str                # Dirección destino en este hop
+    wallet_explorer_id: str    # ID del wallet en Wallet Explorer asociado al output
+    wallet_classification: str # Clasificación heurística del wallet output (Exchange, Mixer, etc)
 
-    # Número de salto o paso dentro del seguimiento (orden cronológico en la ruta).
-    hop: int
+    dest_tag: str              # Etiqueta categórica genérica para el destino si se puede averigurar(Darkside, FBI, Unknown, ...)
+    txid: str                  # ID de transacción en blockchain que representa este movimiento
+    datetime_CET: datetime     # Fecha y hora del evento ajustado a CET
+    mov_type: str              # Tipo de movimiento ('OUT' o 'IN') en relación al caso
+    BTC: float                 # Cantidad de bitcoins movidos en este hop
+    classification: str        # Clasificación del movimiento según heurísticas o análisis personalizado
 
-    # Booleano para indicar si este hop debe continuar siguiendo la ruta de fondos.
-    follow: bool
-
-    # Dirección de entrada (de donde vienen los fondos en este hop).
-    input: str
-
-    # Dirección de salida (a dónde van los fondos en este hop).
-    output: str
-
-    # Etiqueta categórica del destino, p.ej., "Darkside", "FBI", "Unknown".
-    dest_tag: str
-
-    # ID de la transacción en blockchain que representa este movimiento.
-    txid: str
-
-    # Fecha y hora del evento de movimiento, ajustado a CET.
-    datetime_CET: datetime
-
-    # Tipo de movimiento, 'OUT', 'IN'
-    mov_type: str
-
-    # Cantidad de bitcoins movidos en este hop.
-    BTC: float
-
-    # Clasificación del movimiento según heurísticas o análisis personalizado, p.ej., "Exchange", "Mixer", ...
-    classification: str
-
-    # Cantidad de BTC añadidos al flujo desde otras fuentes en este hop.
-    BTC_added_to_flow_from_others: float = 0.0
-
-    # BTC en este hop que no fueron seguidos explícitamente (perdidos o ignorados).
-    BTC_not_followed: float = 0.0
-
-    # Comentarios adicionales para notas o explicaciones.
-    notes: str = ""
-
-    def to_dict(self):
-        """
-        Convierte la instancia en un diccionario con campos y nombres adecuados
-        para exportación a CSV o manipulación en estructuras de datos.
-        """
-        return {
-            "seed_case": self.seed_case,
-            "path_id": self.path_id,
-            "hop": self.hop,
-            "follow": self.follow,
-            "input": self.input,
-            "output": self.output,
-            "dest_tag": self.dest_tag,
-            "txid": self.txid,
-            "datetime_CET": self.datetime_CET,
-            "mov_type": self.mov_type,
-            "BTC": self.BTC,
-            "classification": self.classification,
-            "BTC_added_to_flow_from_others": self.BTC_added_to_flow_from_others,
-            "BTC_not_followed": self.BTC_not_followed,
-            "notes": self.notes
-        }
+    BTC_added_to_flow_from_others: float = 0.0   # BTC añadidos al seguimiento desde otras fuentes
+    BTC_not_followed: float = 0.0                 # BTC en este hop no seguidos explícitamente
+    notes: str = ""                               # Comentarios o notas adicionales

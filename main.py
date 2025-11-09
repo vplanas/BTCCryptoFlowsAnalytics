@@ -1,49 +1,26 @@
 import sys
-import logging
 from src.utils.logger import get_logger
-from src.apiClients.blockchair_client import BlockchairClient
-from src.apiClients.walletexplorer_client import WalletExplorerClient
+from src.tracer.tracer import Tracer
+from config import THRESHOLD, MAX_HOPS, BLOCKCHAIR_API_KEY
 
 logger = get_logger(__name__)
 
 def main():
-    if len(sys.argv) == 2:
+    if len(sys.argv) == 3:
         root_address = sys.argv[1]
+        start_block = int(sys.argv[2])
     else:
         root_address = "15JFh88FcE4WL6qeMLgX5VEAFCbRXjc9fr"  # ejemplo dirección para test
+        start_block = 682599 # ejemplo bloque para test es el bloque en el que se enviaron los BTC que queremos seguir a la dirección root_address
 
     logger.info(f"Analizando dirección raíz: {root_address}")
 
-    blockchair_client = BlockchairClient()
-    wallet_explorer_client = WalletExplorerClient()
+    tracer = Tracer(threshold=THRESHOLD, blockchair_api_key=BLOCKCHAIR_API_KEY, maxhops=MAX_HOPS)
+    tracer.trace(address=root_address, start_block=start_block)
 
-    # Obtener datos básicos con Blockchair
-    basic_info = blockchair_client.get_address_info(root_address)
-    if not basic_info:
-        logger.warning(f"No se pudo obtener información básica para {root_address}")
-        return
+    # Exportar a CSV a la carpeta output con fechas_nombreFichero.csv
+    tracer.fund_flow_records_to_csv("output/fund_flow_records.csv")
+    logger.info("Análisis completado. Resultados guardados en 'output/fund_flow_records.csv'")
 
-    # Extraer y mostrar datos clave
-    balance = basic_info.get('address', {}).get('balance', 'Desconocido')
-    tx_count = basic_info.get('address', {}).get('transaction_count', 'Desconocido')
-    last_activity = basic_info.get('address', {}).get('last_activity', 'Desconocido')
-    logger.info(f"Dirección: {root_address}")
-    logger.info(f"Balance: {balance}")
-    logger.info(f"Número de transacciones: {tx_count}")
-    logger.info(f"Última actividad: {last_activity}")
-
-    # Buscar wallet ID en Wallet Explorer para la dirección
-    wallet_id = wallet_explorer_client.get_wallet_id_from_address(root_address)
-    if wallet_id:
-        logger.info(f"Wallet Explorer identificó el wallet: {wallet_id}")
-        # Obtener transacciones del wallet en Wallet Explorer
-        wallet_txs = wallet_explorer_client.get_wallet_transactions(wallet_id)
-        logger.info(f"Transacciones obtenidas de Wallet Explorer: {len(wallet_txs.get('transactions', []))}")
-    else:
-        logger.warning(f"No se encontró wallet asociado en Wallet Explorer para {root_address}")
-
-    # Obtener transacciones detalladas de Blockchair para la dirección
-    transactions = blockchair_client.get_transactions(root_address, limit=50)
-    logger.info(f"Transacciones detalladas desde Blockchair: {len(transactions)}")
 if __name__ == "__main__":
     main()

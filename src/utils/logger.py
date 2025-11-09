@@ -1,10 +1,22 @@
 import logging
 from config import LOG_LEVELS
 
+class ShortNameFilter(logging.Filter):
+    '''
+    Filtro de logging que añade el nombre corto del módulo al registro.
+    '''
+    def __init__(self, shortname):
+        super().__init__()
+        self.shortname = shortname
+
+    def filter(self, record):
+        record.shortname = self.shortname
+        return True
+
 def get_logger(name):
     # Crea un logger con el nombre del módulo.
     short_name = _get_short_name(name)
-    logger = logging.getLogger(short_name)
+    logger = logging.getLogger(name)
     # Por defecto, pongo el nivel de log a WARNING, pero lo sobreescribo si está en la configuración.
     logger.setLevel(LOG_LEVELS.get(name, logging.DEBUG))
     # Limpia cualquier handler existente para evitar duplicados o bloqueos
@@ -14,9 +26,16 @@ def get_logger(name):
     # Crea un handler que manda los mensajes a consola (stdout).
     ch = logging.StreamHandler()
     # Define formato fecha, nombre logger, nivel y mensaje para los logs.
-    formatter = logging.Formatter('[%(asctime)s %(name)s::%(levelname)s] %(message)s',
-                                  datefmt='%Y%m%d %H:%M:%S'  # formato de fecha YYYYMMDD HH:MM:SS
-                                  )
+    if LOG_LEVELS.get(name, logging.DEBUG) == logging.DEBUG:
+        formatter = logging.Formatter('[%(asctime)s %(shortname)s (%(funcName)s)::%(levelname)s] %(message)s',
+                                    datefmt='%Y%m%d %H:%M:%S'  # formato de fecha YYYYMMDD HH:MM:SS
+                                    )
+    else:
+        formatter = logging.Formatter('[%(asctime)s %(shortname)s::%(levelname)s] %(message)s',
+                                    datefmt='%Y%m%d %H:%M:%S'  # formato de fecha YYYYMMDD HH:MM:SS
+                                    )
+    # Añadimos filtro con shortname al handler
+    ch.addFilter(ShortNameFilter(short_name))
     # Aplica ese formato al handler
     ch.setFormatter(formatter)
     # Asocia el handler al logger
