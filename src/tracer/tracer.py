@@ -21,12 +21,12 @@ class Tracer:
 
     def trace(self, address: str , start_block: int = 0, hop: int = 1, following_btcs: float = 0.0, path: int = 0):
         # Usar los valores iniciales de address y start_block si no se proporcionan como parametros
-        if address is None:
-            address = self.address
         if start_block is None:
             start_block = self.start_block
+        if hop == 1:
+            self.root_address = address
 
-        logger.info(f"(path:{path}, hop:{hop}) Rastreando desde la dirección: {address}")
+        logger.info(f"(path:{path}, hop:{hop}) Rastreo de la dirección: {address}")
 
         # Obtener información básica de la dirección
         addr_info = self.client.get_address_info(address)
@@ -36,7 +36,7 @@ class Tracer:
 
         balance = addr_info.get('address', {}).get('balance', 0) / SAT_PER_BTC
         n_tx = addr_info.get('address', {}).get('transaction_count', 0)
-        logger.info(f"Saldo: {balance} BTC, Número de transacciones: {n_tx}")
+        logger.info(f"Saldo de {address}: {balance} BTC, Número de transacciones: {n_tx}")
     
         # Obtener transacciones filtradas desde start_block
         txs = self.client.get_all_transactions(address, start_block, max_records=100)
@@ -48,10 +48,8 @@ class Tracer:
 
         # Procesar hop 1 (especial para la dirección raíz) obteniendo total de BTC recibidos
         if hop == 1:
-            logger.info(f"(path:{path}, hop:{hop}) Procesando hop 1 para la dirección: {address}")
-            self.root_address = address
             hop_1_data = self.__hop_1_info(txs, address, start_block)
-            logger.info(f"Total recibido por {address} en bloque {start_block}: {hop_1_data['total_input_btc']} BTC en {hop_1_data['fecha_transaccion']}, valor USD: {hop_1_data['total_usd']}")
+            logger.info(f"Es hop 1: Se obtienen detalles.Total recibido por {address} en bloque {start_block}: {hop_1_data['total_input_btc']} BTC en {hop_1_data['fecha_transaccion']}, valor USD: {hop_1_data['total_usd']}")
             # Guardamos el total de BTC recibidos en el hop 1 para calcular umbrales relativos
             self.case_total_input_btc = hop_1_data['total_input_btc']
 

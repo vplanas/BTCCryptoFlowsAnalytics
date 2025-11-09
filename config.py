@@ -14,6 +14,6 @@ MAX_HOPS = 9
 
 LOG_LEVELS = {
     'src.apiClients.blockchair_client': logging.INFO,
-    'src.tracer.tracer': logging.DEBUG,
+    'src.tracer.tracer': logging.INFO,
     'main': logging.INFO,
 }

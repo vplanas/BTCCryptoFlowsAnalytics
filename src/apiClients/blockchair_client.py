@@ -35,6 +35,7 @@ class BlockchairClient:
         luego filtra localmente las transacciones por block_id >= start_block.
         """
         try:
+            logger.info(f"Obteniendo transacciones para {address} desde bloque {start_block} (offset: {offset}, limit: {limit})")
             url = f"{self.base_url}/dashboards/address/{address}"
             params = {
                 "key": self.api_key,
@@ -45,19 +46,19 @@ class BlockchairClient:
             response = requests.get(url, params=params, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
-            logger.info(f"Transacciones obtenidas para {address} con offset {offset} y limit {limit}")  
-
+            
             if data.get('data'):
                 addr_data = data.get('data', {}).get(address)
                 txs = addr_data.get('transactions', [])
                 logger.debug(f"Transacciones para {address} ({len(txs)}): {txs}")
                 filtered_txs = []
-                for tx_summary in txs:
-                    logger.debug(f"Transacción -> {tx_summary}")
-                    logger.info(f"Evaluando transacción {tx_summary.get('hash')} en bloque {tx_summary.get('block_id')}")
+                for tx_summary in txs:               
+                    logger.info(f"Comprobando bloque de la transacción {tx_summary.get('hash')}: bloque {tx_summary.get('block_id')}")
+                    logger.debug(f"Transacción (sin filtros) -> {tx_summary}")
                     block_id = tx_summary.get('block_id', 0)
                     if block_id >= start_block:
                         tx_detail = self.get_transaction_detail(tx_summary.get('hash'))
+                        logger.info(f"Transacción {tx_summary.get('hash')} en bloque {block_id} la añadimos a la lista filtrada")
                         logger.debug(f"Detalles de transacción para {tx_summary.get('hash')}: {tx_detail}")
                         if tx_detail:
                             tx_summary['details'] = tx_detail
@@ -65,9 +66,9 @@ class BlockchairClient:
                     else:
                         # Las transacciones están ordenadas en orden descendente de mas reciente a mas antiguo
                         # Si encontramos una transacción antes del start_block, podemos detenernos y no seguir buscando
-                        logger.debug(f"Transacción {tx_summary.get('hash')} en bloque {tx_summary.get('block_id')} es anterior a start_block {start_block}, deteniendo búsqueda.")
+                        logger.info(f"Transacción {tx_summary.get('hash')} en bloque {tx_summary.get('block_id')} es anterior a start_block {start_block}, deteniendo búsqueda. Las próximas transacciones serían aún más antiguas.")
                         break
-                logger.info(f"Obtenidas {len(filtered_txs)} transacciones filtradas desde bloque {start_block}")
+                logger.info(f"Seleccionadas {len(filtered_txs)} transacciones filtradas desde bloque {start_block}")
                 return filtered_txs
             logger.warning(f"No hay datos para la dirección {address}")
             return []
@@ -82,6 +83,7 @@ class BlockchairClient:
         all_txs = []
         offset = 0
         limit = 100
+        logger.info(f"Obteniendo todas las transacciones para {address} desde bloque {start_block} hasta un máximo de {max_records} registros")
         while offset < max_records:
             txs = self.get_transactions(address, start_block, offset=offset, limit=limit)
             if not txs:
@@ -98,10 +100,11 @@ class BlockchairClient:
         Obtiene detalles completos de una transacción (inputs y outputs).
         """
         if txid in self.cache:
-            logger.debug(f"Usando cache para tx {txid}")
+            logger.debug(f"Detalles de {txid} obtenidos de cache")
             return self.cache[txid]
 
         try:
+            logger.debug(f"Obteniendo detalles de {txid} desde la API")
             url = f"{self.base_url}/dashboards/transactions/{txid}"
             params = {
                 "key": self.api_key
@@ -119,7 +122,6 @@ class BlockchairClient:
                     'outputs': tx_data.get('outputs', []),      
                     'fee': tx_data.get('transaction', {}).get('fee', 0)
                 }                       
-                logger.info(f"Detalles obtenidos para tx {txid}")
                 logger.debug(f"Detalles de tx {txid}: {tx_detail}")
 
                 # Almacena en cache
