@@ -209,3 +209,8 @@ __marimo__/
 # BTCCryptoFlowsAnalytics
 logs/
 output/
+
+#datasets demasiado grandes
+datasets/mix/**/*BABD-13.csv
+datasets/mix/**/*CB.tsv
+datasets/mix/**/*BB.tsv
