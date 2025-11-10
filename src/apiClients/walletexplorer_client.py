@@ -1,4 +1,5 @@
 import requests
+from typing import List, Tuple, Dict, Union
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)

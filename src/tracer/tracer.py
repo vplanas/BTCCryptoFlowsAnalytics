@@ -1,7 +1,6 @@
 from typing import List, Tuple, Dict, Union
 import pytz # Para manejo de zonas horarias
 from datetime import datetime
-import csv
 from src.utils.logger import get_logger
 from src.apiClients.blockchair_client import BlockchairClient
 from src.models.fund_flow_record import FundFlowRecord
@@ -36,10 +35,12 @@ class Tracer:
 
         balance = addr_info.get('address', {}).get('balance', 0) / SAT_PER_BTC
         n_tx = addr_info.get('address', {}).get('transaction_count', 0)
-        logger.info(f"Saldo de {address}: {balance} BTC, Número de transacciones: {n_tx}")
+        logger.info(f"Saldo de {address}: {balance:.10f} BTC, Número de transacciones: {n_tx}")
     
         # Obtener transacciones filtradas desde start_block
-        txs = self.client.get_all_transactions(address, start_block, max_records=100)
+        txs, limit_reached = self.client.get_all_transactions(address, start_block, max_records=20)
+        if limit_reached:
+            logger.warning(f"(path:{path}, hop:{hop}) Atención: Se ha alcanzado el límite máximo de registros al obtener transacciones para {address}. Es posible que no se hayan contabilizado todas las transacciones.")
         if not txs:
             logger.warning("No se encontraron transacciones después del bloque especificado.")
             return
@@ -49,9 +50,19 @@ class Tracer:
         # Procesar hop 1 (especial para la dirección raíz) obteniendo total de BTC recibidos
         if hop == 1:
             hop_1_data = self.__hop_1_info(txs, address, start_block)
-            logger.info(f"Es hop 1: Se obtienen detalles.Total recibido por {address} en bloque {start_block}: {hop_1_data['total_input_btc']} BTC en {hop_1_data['fecha_transaccion']}, valor USD: {hop_1_data['total_usd']}")
+            logger.debug(f"Es hop 1: Se obtienen detalles del total recibido en el inicio de la investigación --->")
+            logger.debug(f"--->{address} en bloque {start_block} recibió {hop_1_data['total_input_btc']} BTC | fecha {hop_1_data['transaction_date']}, valor USD: {hop_1_data['total_usd']}")
             # Guardamos el total de BTC recibidos en el hop 1 para calcular umbrales relativos
             self.case_total_input_btc = hop_1_data['total_input_btc']
+
+        else:
+            logger.debug(f"(path:{path}, hop:{hop})Obtenemos el total de BTC recibidos por {address} des del principio (bloque 0)")
+            receipt_info = self.__btc_received_by_address_on_txs_since_block(address, start_block=0)
+            logger.debug(f"--->{address} desde bloque 0 ha recibido un total de {receipt_info['total_input_btc']} BTC | fecha {receipt_info['transaction_date']}, valor USD: {receipt_info['total_usd']}")
+            funds_from_others = receipt_info['total_input_btc']-following_btcs
+            if receipt_info['limit_reached']:
+                logger.warning(f"(path:{path}, hop:{hop}) Atención: Se ha alcanzado el límite máximo de registros al obtener transacciones para {address}. Es posible que no se hayan contabilizado todos los BTC recibidos.")
+            logger.info(f"(path:{path}, hop:{hop}) A parte de los {following_btcs:.10f} BTC recibidos en el hop anterior, {address} ha recibido un total de {funds_from_others:.10f} BTC desde el bloque 0")
 
         # Identificar salidas en transacciones que tengan la direccion seguida como entrada y que superan el umbral transacciones de bloques posteriores al start_block
         outputs_to_follow, outputs_after_flow, btc_not_followed = self.__get_outputs_to_follow(txs, address, self.case_total_input_btc, self.case_total_input_btc if hop == 1 else following_btcs)
@@ -59,7 +70,7 @@ class Tracer:
         logger.debug(f"Outputs después del flujo: {outputs_after_flow}")
         logger.info(f"(path:{path}, hop:{hop}) Número de outputs a seguir: {len(outputs_to_follow)}")
         logger.info(f"(path:{path}, hop:{hop}) Número de outputs no seguidos después de gastar los BTC recibidos: {len(outputs_after_flow)}")
-        logger.info(f"(path:{path}, hop:{hop}) BTC no seguidos en este hop por no superar umbral: {btc_not_followed} BTC")
+        logger.info(f"(path:{path}, hop:{hop}) BTC no seguidos en este hop por no superar umbral: {btc_not_followed:.10f} BTC") if btc_not_followed > 0 else None
 
         # Seguir cada output que supera el umbral
         #el primero seguirá el current path y los demas seran nuevos paths path+1
@@ -69,7 +80,7 @@ class Tracer:
             child_path = path if i == 0 else path + i  # Path secuencialmente para cada output extra
             # Llamada recursiva para el siguiente hop mientras no se supere el número máximo de hops
             if hop+1 <= self.maxhops:
-                logger.info(f"(path:{child_path}, hop:{hop}) Siguiendo output a {next_address} con {value_btc} BTC desde tx {output['tx_hash']} a partir del bloque {output['block_id']}")
+                logger.info(f"(path:{child_path}, hop:{hop}) Siguiendo output a {next_address} con {value_btc:.10f} BTC desde tx {output['tx_hash']} a partir del bloque {output['block_id']}")
                 self.trace(address=next_address, start_block=output['block_id'], hop=hop+1, following_btcs=value_btc, path=child_path)
             else:
                 logger.info(f"(path:{child_path}, hop:{hop+1}) Máximo número de hops ({self.maxhops}) alcanzado. No se seguirá hacia la siguiente dirección ({next_address}) por este path.")
@@ -95,30 +106,47 @@ class Tracer:
                 notes= ""                               # Comentarios o notas adicionales
                         )
             self.fund_flow_records.append(record)
-    
+
+    def __btc_received_by_address_on_txs_since_block(self, address: str, start_block: int) -> dict:
+        txs_since_block,limit_reached = self.client.get_all_transactions(address=address, start_block=start_block,max_records=20)
+        logger.debug(f"Transacciones  desde el bloque {start_block}: {len(txs_since_block)}")
+
+        # Calcular el total de BTC recibido en las transacciones desde el bloque
+        receipt_info = self.__get_address_received_info_from_txs(txs_since_block, address)
+        return {
+            'total_input_btc': receipt_info['total_btc'],
+            'transaction_date': receipt_info['transaction_date'],
+            'total_usd': receipt_info['total_usd'],
+            'limit_reached': limit_reached
+        }
+
     def __hop_1_info(self, txs: list, address: str, start_block: int) -> dict:
         """
         Información detallada para el hop 1 (primer hop).
         """
-        # Si estamos en el hop 1, calcular el total de BTC en las entradas para esta dirección
-        initial_txs = [tx for tx in txs if tx.get('block_id') == start_block]
+        # Si estamos en el hop 1, calcular el total de BTC en las entradas para esta dirección en el bloque inicial inidcado
+        # de ese modo podremos obtener el valor total recibido en el punto donde empezamos a seguir el flujo
+        logger.info(f"(Hop 1) Calculando total recibido por {address} en el bloque {start_block} mirando en {len(txs)} transacciones.")
+        #logger.debug(f"Transacciones recibidas para hop 1: {txs}")
+        txs_in_startblock = [tx for tx in txs if tx.get('block_id') == start_block]
         #logger.debug(f"Transacciones en el bloque inicial {start_block}: {initial_txs}")
 
-        recibo_inicial = self.__get_address_received_info_from_txs(initial_txs, address)
-        total_input_btc = recibo_inicial['total_btc']   
+        # Obtener información de recibo para el hop 1
+        receipt_info = self.__get_address_received_info_from_txs(txs_in_startblock, address)
+        total_input_btc = receipt_info['total_btc']   
         return {
             'total_input_btc': total_input_btc, 
-            'fecha_transaccion': recibo_inicial['fecha_transaccion'],
-            'total_usd': recibo_inicial['total_usd']
+            'transaction_date': receipt_info['transaction_date'],
+            'total_usd': receipt_info['total_usd']
         }
 
     def __get_address_received_info_from_txs(self, txs: list, address: str) -> dict:
         """
-        Calcula el total recibido por la dirección y devuelve la fecha y valor en USD
+        Calcula el total recibido por la dirección en una lista de transacciones y devuelve la fecha y valor en USD
         tomando como referencia las salidas (outputs) en las transacciones.
         """
         total_recibido_satoshis = 0
-        fecha_transaccion = None
+        transaction_date = None
         total_recibido_usd = 0.0
 
         for tx in txs:
@@ -128,13 +156,13 @@ class Tracer:
             for output in outputs:
                 if output.get('recipient') == address:
                     total_recibido_satoshis += output.get('value', 0)
-                    fecha_transaccion = tx.get('time')
+                    transaction_date = tx.get('time')
                     total_recibido_usd += output.get('value_usd', 0.0)
 
         return {
             'total_satoshis': total_recibido_satoshis,
             'total_btc': total_recibido_satoshis / SAT_PER_BTC,
-            'fecha_transaccion': fecha_transaccion,
+            'transaction_date': transaction_date,
             'total_usd': total_recibido_usd
         }
 
@@ -165,7 +193,7 @@ class Tracer:
                     satoshis_out = outp.get('value', 0)
                     btc_out = satoshis_out / SAT_PER_BTC
                     # Si ya hemos acumulado todo lo que la dirección ha recibido, los siguientes outputs no se siguen
-                    logger.debug(f"Evaluando output a {outp.get('recipient')} con {btc_out} BTC en tx {tx.get('hash')} - btc_output_accumulated: {btc_output_accumulated}, btc_received: {btc_received} en tx con fee {fee} BTC")
+                    logger.debug(f"Evaluando output a {outp.get('recipient')} con {btc_out:.10f} BTC en tx {tx.get('hash')} - btc_output_accumulated: {btc_output_accumulated:.10f}, btc_received: {btc_received:.10f} en tx con fee {fee:.10f} BTC")
                     if btc_output_accumulated <= (btc_received-fee):
                         if btc_out / total_input_btc > self.threshold:
                             # Añadir la dirección de la salida y la cantidad recibida a la lista de seguimiento como un diccionario
@@ -179,11 +207,11 @@ class Tracer:
                                 'datetime_CET': dt_cet
                             })
                         else:
-                            logger.debug(f"Output a {outp.get('recipient')} con {btc_out} BTC no supera el umbral del {self.threshold*100}% del total recibido ({total_input_btc} BTC). Se suman a BTCs no seguidos.")
+                            logger.debug(f"Output a {outp.get('recipient')} con {btc_out:.10f} BTC no supera el umbral del {self.threshold*100}% del total recibido ({total_input_btc:.10f} BTC). Se suman a BTCs no seguidos.")
                             btc_not_followed += btc_out
                         btc_output_accumulated += btc_out
                     else:
-                        logger.debug(f"Ya se han seguido BTCs por un total de {btc_output_accumulated} BTC, que supera los {btc_received - fee} BTC recibidos (menos fee). No se sigue el output a {outp.get('recipient')} con {btc_out} BTC. Pero se registran")
+                        logger.debug(f"Ya se han seguido BTCs por un total de {btc_output_accumulated:.10f} BTC, que supera los {btc_received - fee:.10f} BTC recibidos (menos fee). No se sigue el output a {outp.get('recipient')} con {btc_out:.10f} BTC. Pero se registran")
                         outputs_after_flow.append({
                             'tx_hash': tx.get('hash'),
                             'recipient': outp.get('recipient'),
@@ -196,42 +224,5 @@ class Tracer:
 
         # Ordenamos los outputs a seguir por cantidad descendente, asi el primero seguirá el current path y los demas seran nuevos paths path+1
         outputs_to_follow.sort(key=lambda x: x['value_btc'], reverse=True)
-        return outputs_to_follow, outputs_after_flow, btc_not_followed
-    
-    def fund_flow_records_to_csv(self, filepath: str):
-        # Exporta los registros de flujo de fondos a un archivo CSV
-        with open(filepath, mode='w', newline='', encoding='utf-8') as csvfile:
-            fieldnames = [
-                'seed_case', 'path_id', 'hop', 'follow', 'input', 'output', 'wallet_explorer_id',
-                'wallet_classification', 'dest_tag', 'txid', 'datetime_CET', 'mov_type', 'BTC',
-                'classification', 'BTC_added_to_flow_from_others', 'BTC_not_followed', 'notes'
-            ]
-            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-
-            writer.writeheader()
-            for record in self.fund_flow_records:
-
-                writer.writerow({
-                    'seed_case': record.seed_case,
-                    'path_id': record.path_id,
-                    'hop': record.hop,
-                    'follow': record.follow,
-                    'input': record.input,
-                    'output': record.output,
-                    'wallet_explorer_id': record.wallet_explorer_id,
-                    'wallet_classification': record.wallet_classification,
-                    'dest_tag': record.dest_tag,
-                    'txid': record.txid,
-                    'datetime_CET': record.datetime_CET.strftime('%Y-%m-%d %H:%M:%S'),
-                    'mov_type': record.mov_type,
-                    'BTC': record.BTC,
-                    'classification': record.classification,
-                    'BTC_added_to_flow_from_others': record.BTC_added_to_flow_from_others,
-                    'BTC_not_followed': record.BTC_not_followed,
-                    'notes': record.notes
-                })
-
-
-
-    
+        return outputs_to_follow, outputs_after_flow, btc_not_followed 
         

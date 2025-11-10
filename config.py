@@ -9,11 +9,12 @@ if not BLOCKCHAIR_API_KEY:
     raise ValueError("Falta la clave API de Blockchair en el archivo .env")
 
 THRESHOLD = 0.1
-MAX_HOPS = 9
+MAX_HOPS = 3
 
 
 LOG_LEVELS = {
     'src.apiClients.blockchair_client': logging.INFO,
-    'src.tracer.tracer': logging.INFO,
+    'src.apiClients.walletexplorer_client': logging.INFO,
+    'src.tracer.tracer': logging.DEBUG,
     'main': logging.INFO,
 }

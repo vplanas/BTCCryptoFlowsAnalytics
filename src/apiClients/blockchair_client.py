@@ -1,5 +1,5 @@
 import requests
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from src.utils.logger import get_logger
 from config import BLOCKCHAIR_API_KEY
 
@@ -76,16 +76,16 @@ class BlockchairClient:
             logger.error(f"Error obteniendo transacciones de {address}: {e}")
             return []
 
-    def get_all_transactions(self, address: str, start_block: int, max_records: int = 1000) -> List[Dict]:
+    def get_all_transactions(self, address: str, start_block: int, max_records: int = 1000) ->  Tuple[List[Dict], bool]:
         """
-        Obtiene todas las transacciones desde start_block paginando de forma completa hasta un máximo de max_records.
+        Obtiene todas las transacciones desde start_block paginando de forma completa hasta un máximo de max_records. Si se alcanza max_records, devuelve False en el segundo valor de la tupla.
         """
         all_txs = []
         offset = 0
         limit = 100
         logger.info(f"Obteniendo todas las transacciones para {address} desde bloque {start_block} hasta un máximo de {max_records} registros")
         while offset < max_records:
-            txs = self.get_transactions(address, start_block, offset=offset, limit=limit)
+            txs = self.get_transactions(address, start_block, offset=offset, limit=min(limit, max_records))
             if not txs:
                 break
             all_txs.extend(txs)
@@ -93,18 +93,18 @@ class BlockchairClient:
                 break
             offset += limit
         all_txs.sort(key=lambda tx: tx.get('block_id', 0))
-        return all_txs
+        return all_txs, len(all_txs) == max_records
 
     def get_transaction_detail(self, txid: str) -> Dict:
         """
         Obtiene detalles completos de una transacción (inputs y outputs).
         """
         if txid in self.cache:
-            logger.debug(f"Detalles de {txid} obtenidos de cache")
+            logger.info(f"Detalles de {txid} obtenidos de cache")
             return self.cache[txid]
 
         try:
-            logger.debug(f"Obteniendo detalles de {txid} desde la API")
+            logger.info(f"Obteniendo detalles de {txid} desde la API")
             url = f"{self.base_url}/dashboards/transactions/{txid}"
             params = {
                 "key": self.api_key
