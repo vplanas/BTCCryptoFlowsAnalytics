@@ -23,7 +23,7 @@ class FundFlowRecord:
     wallet_explorer_id: str    # ID del wallet en Wallet Explorer asociado al output
     wallet_classification: str # Clasificación heurística del wallet output (Exchange, Mixer, etc)
 
-    dest_tag: str              # Etiqueta categórica genérica para el destino si se puede averigurar(Darkside, FBI, Unknown, ...)
+    wallet_label: str           # Etiqueta categórica genérica para el destino si se puede averigurar(Darkside, FBI, Unknown, ...)
     txid: str                  # ID de transacción en blockchain que representa este movimiento
     datetime_CET: datetime     # Fecha y hora del evento ajustado a CET
     mov_type: str              # Tipo de movimiento ('OUT' o 'IN') en relación al caso

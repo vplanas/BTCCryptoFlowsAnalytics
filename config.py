@@ -16,9 +16,9 @@ MAX_HOPS = 9
 
 
 LOG_LEVELS = {
-    'src.apiClients.blockchair_client': logging.INFO,
+    'src.apiClients.blockchair_client': logging.WARNING,
     'src.apiClients.blockcypher_client': logging.INFO,
-    'src.apiClients.walletexplorer_client': logging.INFO,
+    'src.apiClients.walletexplorer_client': logging.WARNING,
     'src.cluster_heuristics.cluster_heuristics': logging.INFO,
     'src.tracer.tracer': logging.INFO,
     'main': logging.INFO,

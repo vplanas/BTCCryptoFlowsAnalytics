@@ -26,6 +26,7 @@ class Tracer:
         self.fund_flow_records: List[FundFlowRecord] = [] # Registros de flujos de fondos rastreados
 
     def trace(self, address: str , start_block: int = 0, hop: int = 1, following_btcs: float = 0.0, path: int = 0):
+        # from_address: dirección desde la que se recibió el BTC en el hop anterior (None si es la raíz)
         logger.info(f"(path:{path}, hop:{hop}) Rastreo de la dirección: {address}")
 
         # Obtener información básica de la dirección
@@ -37,16 +38,6 @@ class Tracer:
         balance = addr_info.get('address', {}).get('balance', 0) / SAT_PER_BTC
         n_tx = addr_info.get('address', {}).get('transaction_count', 0)
         logger.info(f"Saldo de {address}: {balance:.10f} BTC, Número de transacciones: {n_tx}")
-
-        # Aplicamos heurísticas de clasificación de cluster
-        # Buscamos la dirección en WalletExplorer para ver si pertenece a un cluster conocido, aplicamos heurísticas y obtenemos la clasificación
-        classification = self.heuristics.classify_address(address)
-        logger.info(f"(path:{path}, hop:{hop}) Clasificación de cluster para {address}: Tipo: {classification['cluster_type']}, Confianza: {classification['confidence']:.2%}, Descripción: {classification['description']}, Label: {classification.get('label', 'N/A')}")
-
-        # Si la clasificación indica que debemos detener el rastreo, lo hacemos
-        if classification['cluster_type'] in STOP_TRACE_ACTIONS_BY_WALLET_CLASSIFICATION:
-            logger.info(f"(path:{path}, hop:{hop}) Deteniendo el rastreo por este path para {address} debido a la clasificación del cluster: {classification['cluster_type']}")
-            return
 
         # Obtenemos (Máximo 100) transacciones desde start_block usando Blockchair
         txs, limit_reached = self.BlockChairClient.get_all_transactions(address, start_block, max_records=100)
@@ -84,10 +75,6 @@ class Tracer:
             logger.info(f"(path:{path}, hop:{hop}) A parte de los {following_btcs:.10f} BTC recibidos en el hop anterior, {address} ha recibido un total de {funds_from_others:.10f} BTC desde el bloque 0")
         '''
 
-        '''
-        
-        '''
-
         # Identificar salidas en transacciones que tengan la direccion 'actual' (address) como entrada y que superan el umbral en transacciones de bloques posteriores al start_block
         txs_outputs_to_follow, txs_outputs_after_flow, btc_not_followed = self.__get_outputs_to_follow(txs, address, self.case_total_input_btc, self.case_total_input_btc if hop == 1 else following_btcs)
         logger.debug(f"Outputs a seguir: {txs_outputs_to_follow}")
@@ -102,32 +89,43 @@ class Tracer:
             next_address = output['recipient']
             value_btc = output['value_btc']
             child_path = path if i == 0 else path + i  # Path secuencialmente para cada output extra
-            # Llamada recursiva para el siguiente hop mientras no se supere el número máximo de hops
-            if hop+1 <= self.maxhops:
+
+            # Aplicamos heurísticas de clasificación de cluster para la doreccón siguiente
+            # Buscamos la dirección en WalletExplorer para ver si pertenece a un cluster conocido, aplicamos heurísticas y obtenemos la clasificación
+            classification = self.heuristics.classify_address(next_address)
+            logger.info(f"(path:{path}, hop:{hop}) Clasificación de cluster para {next_address}: Tipo: {classification['cluster_type']}, Confianza: {classification['confidence']:.2%}, Descripción: {classification['description']}, Label: {classification.get('label', 'N/A')}")
+
+            # Decidir si seguir
+            should_follow = (
+                hop + 1 <= self.maxhops and 
+                classification['cluster_type'] not in STOP_TRACE_ACTIONS_BY_WALLET_CLASSIFICATION
+            )
+            # Llamada recursiva para el siguiente hop mientras no se supere el número máximo de hops o haya una clasificación que indique detenerse
+            if should_follow:
                 logger.info(f"(path:{child_path}, hop:{hop}) Siguiendo output a {next_address} con {value_btc:.10f} BTC desde tx {output['tx_hash']} a partir del bloque {output['block_id']}")
                 self.trace(address=next_address, start_block=output['block_id'], hop=hop+1, following_btcs=value_btc, path=child_path)
             else:
-                logger.info(f"(path:{child_path}, hop:{hop+1}) Máximo número de hops ({self.maxhops}) alcanzado. No se seguirá hacia la siguiente dirección ({next_address}) por este path.")
+                logger.info(f"(path:{child_path}, hop:{hop}) No se seguirá hacia la siguiente dirección ({next_address}) por este path. {classification['cluster_type']} o max hops. No se seguirá hacia la siguiente dirección ({next_address}) por este path.")
 
             # Registrar el FundFlowRecord para este hop
             record = FundFlowRecord(
                 seed_case=self.root_address,
                 path_id=child_path,
                 hop=hop,
-                follow=True,
+                follow=should_follow,
                 input=address,
                 output=next_address,
                 wallet_explorer_id=classification.get('wallet_id', "N/A"),
                 wallet_classification=classification.get('cluster_type', "N/A"),
-                dest_tag="",
-                txid="",
+                wallet_label=classification.get('label', ""),
+                txid=output['tx_hash'],
                 datetime_CET=output['datetime_CET'],
                 mov_type="OUT",
                 BTC=value_btc,  
                 classification="",
                 BTC_added_to_flow_from_others= 0.0,     # BTC añadidos al seguimiento desde otras fuentes
                 BTC_not_followed= btc_not_followed,     # BTC en este hop no seguidos explícitamente
-                notes= ""                               # Comentarios o notas adicionales
+                notes= "" if should_follow else f"No seguido: {classification['cluster_type']}"                               # Comentarios o notas adicionales
                         )
             self.fund_flow_records.append(record)
         

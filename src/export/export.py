@@ -7,7 +7,7 @@ def export_fund_flow_records_to_csv(records, filepath):
     with open(filepath, mode='w', newline='', encoding='utf-8') as csvfile:
         fieldnames = [
             'seed_case', 'path_id', 'hop', 'follow', 'input', 'output', 'wallet_explorer_id',
-            'wallet_classification', 'dest_tag', 'txid', 'datetime_CET', 'mov_type', 'BTC',
+            'wallet_classification', 'wallet_label', 'txid', 'datetime_CET', 'mov_type', 'BTC',
             'classification', 'BTC_added_to_flow_from_others', 'BTC_not_followed', 'notes'
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -23,9 +23,9 @@ def export_fund_flow_records_to_csv(records, filepath):
                 'output': record.output,
                 'wallet_explorer_id': record.wallet_explorer_id,
                 'wallet_classification': record.wallet_classification,
-                'dest_tag': record.dest_tag,
+                'wallet_label': record.wallet_label,
                 'txid': record.txid,
-                'datetime_CET': record.datetime_CET.strftime('%Y-%m-%d %H:%M:%S'),
+                'datetime_CET':  record.datetime_CET.strftime('%Y-%m-%d %H:%M:%S') if record.datetime_CET else '',
                 'mov_type': record.mov_type,
                 'BTC': f"{record.BTC:.10f}",
                 'classification': record.classification,
