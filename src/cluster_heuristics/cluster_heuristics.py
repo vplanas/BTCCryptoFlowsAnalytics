@@ -42,7 +42,7 @@ class ClusterHeuristics:
                 }
             
             wallet_id = wallet_info.get('wallet_id')
-            wallet_label = wallet_info.get('label', "")
+            wallet_label = wallet_info.get('label') or ""
             
             logger.debug(f"Dirección {address} pertenece al cluster {wallet_id}" + 
                         (f" (label: {wallet_label})" if wallet_label else ""))
