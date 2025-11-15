@@ -16,8 +16,28 @@ class FlowGraphVisualizer:
         logger.debug("FlowGraphVisualizer inicializado")
         
     def generate_graph(self, output_file: str = "fund_flow_graph.html"):
-        """Genera el grafo HTML interactivo."""
         logger.info(f"Generando grafo con {len(self.records)} registros...")
+        
+        # Diccionario para almacenar info de cada nodo unico
+        nodes_info = {}
+        edges_list = []
+        
+        # Primera pasada: recopilar informacion de nodos y edges
+        for record in self.records:
+            # Guardar info del nodo OUTPUT (la clasificacion siempre es para el output)
+            if record.output and record.output not in nodes_info:
+                nodes_info[record.output] = {
+                    'classification': record.wallet_classification,
+                    'wallet_id': record.wallet_explorer_id,
+                    'label': record.wallet_label,
+                    'follow': record.follow,
+                    'hop': record.hop,
+                    'path_id': record.path_id
+                }
+            
+            # Guardar el edge
+            if record.input and record.output:
+                edges_list.append(record)
         
         # Añadir nodo raiz
         self.net.add_node(
@@ -29,59 +49,56 @@ class FlowGraphVisualizer:
             shape="star"
         )
         
-        # Set para rastrear nodos ya añadidos
-        added_nodes = {self.root_address}
+        # Segunda pasada: añadir nodos con su info correcta
+        for node_address, info in nodes_info.items():
+            if node_address == self.root_address:
+                continue
+                
+            color = self._get_color_by_classification(info['classification'])
+            shape = "square" if not info['follow'] else "dot"
+            
+            tooltip = (
+                f"Address: {node_address}\n"
+                f"Classification: {info['classification']}\n"
+                f"Wallet ID: {info['wallet_id']}\n"
+                f"Label: {info['label']}\n"
+                f"Follow: {info['follow']}"
+            )
+            
+            self.net.add_node(
+                node_address,
+                label=self._truncate_address(node_address),
+                title=tooltip,
+                color=color,
+                size=15 + (info['hop'] * 2),
+                shape=shape
+            )
         
-        # Añadir nodos y edges
-        for record in self.records:
-            if record.follow:
-                color = self._get_color_by_classification(record.wallet_classification)
-                
-                if record.input and record.input not in added_nodes:
-                    self.net.add_node(
-                        record.input,
-                        label=self._truncate_address(record.input),
-                        title=self._get_node_tooltip(record, "input"),
-                        color=color,
-                        size=15 + (record.hop * 2),
-                        shape="dot"
-                    )
-                    added_nodes.add(record.input)
-                
-                if record.output not in added_nodes:
-                    self.net.add_node(
-                        record.output,
-                        label=self._truncate_address(record.output),
-                        title=self._get_node_tooltip(record, "output"),
-                        color=color,
-                        size=15 + (record.hop * 2),
-                        shape="dot"
-                    )
-                    added_nodes.add(record.output)
-                
-                if record.input:
-                    self.net.add_edge(
-                        record.input,
-                        record.output,
-                        value=record.BTC * 10,
-                        title=f"Hop {record.hop} | {record.BTC:.6f} BTC | Path {record.path_id}",
-                        label=f"{record.BTC:.4f} BTC",
-                        color=self._get_edge_color_by_hop(record.hop)
-                    )
+        # Tercera pasada: añadir edges
+        for record in edges_list:
+            self.net.add_edge(
+                record.input,
+                record.output,
+                value=record.BTC * 10,
+                title=f"Hop {record.hop} | {record.BTC:.6f} BTC | Path {record.path_id} | {'NO SEGUIDO' if not record.follow else 'Seguido'}",
+                label=f"{record.BTC:.4f}",
+                color=self._get_edge_color_by_hop(record.hop),
+                dashes=not record.follow
+            )
         
         self.net.set_options("""
         var options = {
-          "physics": {
+        "physics": {
             "barnesHut": {
-              "gravitationalConstant": -30000,
-              "centralGravity": 0.3,
-              "springLength": 200
+            "gravitationalConstant": -30000,
+            "centralGravity": 0.3,
+            "springLength": 200
             }
-          },
-          "edges": {
+        },
+        "edges": {
             "arrows": {"to": {"enabled": true, "scaleFactor": 0.5}},
             "smooth": {"type": "cubicBezier"}
-          }
+        }
         }
         """)
         
@@ -90,6 +107,8 @@ class FlowGraphVisualizer:
         
         logger.info(f"Grafo guardado en: {output_file}")
         return output_file
+
+
     
     def _inject_info_panel(self, html_file: str):
         """Inyecta panel lateral de informacion."""
