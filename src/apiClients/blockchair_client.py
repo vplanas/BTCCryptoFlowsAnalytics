@@ -31,7 +31,7 @@ class BlockchairClient:
         
     def get_transactions(self, address: str, start_block: int, offset: int = 0, limit: int = 100) -> List[Dict]:
         """
-        Obtiene transacciones de la dirección con paginación real desde dashboards/address,
+        Obtiene transacciones de la dirección con paginación y
         luego filtra localmente las transacciones por block_id >= start_block.
         """
         try:
