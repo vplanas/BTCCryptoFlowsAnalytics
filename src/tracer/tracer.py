@@ -8,6 +8,8 @@ from src.models.fund_flow_record import FundFlowRecord
 from src.cluster_heuristics.cluster_heuristics import ClusterHeuristics
 from config import STOP_TRACE_ACTIONS_BY_WALLET_CLASSIFICATION
 import json
+import networkx as nx
+
 
 SAT_PER_BTC = 100_000_000 # Satoshis en un Bitcoin
 
@@ -24,20 +26,17 @@ class Tracer:
         self.case_total_input_btc = 0 # Total de BTC recibidos en el hop 1 (dirección raíz)
         self.root_address = root_address # Dirección raíz del análisis
         self.fund_flow_records: List[FundFlowRecord] = [] # Registros de flujos de fondos rastreados
+        self.G = nx.DiGraph()  # Grafo dirigido para los flujos
+        self.next_path_id = 0  # Contador global para asignar path IDs únicos
 
     def trace(self, address: str , start_block: int = 0, hop: int = 1, following_btcs: float = 0.0, path: int = 0):
         # from_address: dirección desde la que se recibió el BTC en el hop anterior (None si es la raíz)
+        
+        # En el hop 1, inicializar el contador de paths
+        if hop == 1:
+            self.next_path_id = 1  # Empezamos desde 1 porque el path 0 será el primero desde root
+        
         logger.info(f"(path:{path}, hop:{hop}) Rastreo de la dirección: {address}")
-
-        # Obtener información básica de la dirección
-        addr_info = self.BlockChairClient.get_address_info(address)
-        if not addr_info:
-            logger.warning("No se pudo obtener información de la dirección.")
-            return
-
-        balance = addr_info.get('address', {}).get('balance', 0) / SAT_PER_BTC
-        n_tx = addr_info.get('address', {}).get('transaction_count', 0)
-        logger.info(f"Saldo de {address}: {balance:.10f} BTC, Número de transacciones: {n_tx}")
 
         # Obtenemos (Máximo 100) transacciones desde start_block usando Blockchair
         txs, limit_reached = self.BlockChairClient.get_all_transactions(address, start_block, max_records=100)
@@ -84,14 +83,21 @@ class Tracer:
         logger.info(f"(path:{path}, hop:{hop}) BTC no seguidos en este hop por no superar umbral: {btc_not_followed:.10f} BTC") if btc_not_followed > 0 else None
 
         # Seguir cada output que supera el umbral
-        # el primero que encontremos seguirá por el current path y los demas seran nuevos paths path+1
+        # El primero continúa con el path actual, los demás obtienen nuevos path IDs únicos
         for i, output in enumerate(txs_outputs_to_follow):
             next_address = output['recipient']
             value_btc = output['value_btc']
-            child_path = path if i == 0 else path + i  # Path secuencialmente para cada output extra
+            
+            # Asignar path: el primer output continúa con el path actual,
+            # los siguientes obtienen nuevos IDs del contador global
+            if i == 0:
+                child_path = path
+            else:
+                child_path = self.next_path_id
+                self.next_path_id += 1
 
-            # Aplicamos heurísticas de clasificación de cluster para la doreccón siguiente
-            # Buscamos la dirección en WalletExplorer para ver si pertenece a un cluster conocido, aplicamos heurísticas y obtenemos la clasificación
+            # Obtener clasificación de cluster para next_address
+            # Buscamos la dirección en WalletExplorer para ver si pertenece a un cluster conocido
             classification = self.heuristics.classify_address(next_address)
             logger.info(f"(path:{path}, hop:{hop}) Clasificación de cluster para {next_address}: Tipo: {classification['cluster_type']}, Confianza: {classification['confidence']:.2%}, Descripción: {classification['description']}, Label: {classification.get('label', 'N/A')}")
 
@@ -105,7 +111,7 @@ class Tracer:
                 logger.info(f"(path:{child_path}, hop:{hop}) Siguiendo output a {next_address} con {value_btc:.10f} BTC desde tx {output['tx_hash']} a partir del bloque {output['block_id']}")
                 self.trace(address=next_address, start_block=output['block_id'], hop=hop+1, following_btcs=value_btc, path=child_path)
             else:
-                logger.info(f"(path:{child_path}, hop:{hop}) No se seguirá hacia la siguiente dirección ({next_address}) por este path. {classification['cluster_type']} o max hops. No se seguirá hacia la siguiente dirección ({next_address}) por este path.")
+                logger.info(f"(path:{child_path}, hop:{hop}) No se seguirá: {classification['cluster_type']} o maxhops alcanzado")
 
             # Registrar el FundFlowRecord para este hop
             record = FundFlowRecord(
@@ -128,6 +134,60 @@ class Tracer:
                 notes= "" if should_follow else f"No seguido: {classification['cluster_type']}"                               # Comentarios o notas adicionales
                         )
             self.fund_flow_records.append(record)
+
+            # Añadir nodos al grafo NetworkX con todos los datos disponibles
+            # Añadir nodo address si no existe (reutilizar clasificación si ya está en memoria)
+            if not self.G.has_node(address):
+                # Para el nodo de origen, intentamos reutilizar alguna clasificación previa
+                # En la primera iteración, lo clasificamos, después se reutiliza
+                if hop == 1:
+                    classification_address = self.heuristics.classify_address(address)
+                else:
+                    # Si no es hop 1, el address ya debería existir como next_address de un hop anterior
+                    # pero por si acaso, lo clasificamos
+                    classification_address = self.heuristics.classify_address(address)
+                
+                self.G.add_node(address,
+                    label=f"{address[:3]}...{address[-3:]}",
+                    address=address,
+                    wallet_explorer_id=classification_address.get('wallet_id', "N/A"),
+                    wallet_classification=classification_address.get('cluster_type', "N/A"),
+                    wallet_label=classification_address.get('label', ""),
+                    confidence=classification_address.get('confidence', 0),
+                    description=classification_address.get('description', "")
+                )
+            
+            # Añadir nodo next_address con su clasificación completa si no existe
+            if not self.G.has_node(next_address):
+                self.G.add_node(next_address,
+                    label=f"{next_address[:3]}...{next_address[-3:]}",
+                    address=next_address,
+                    wallet_explorer_id=classification.get('wallet_id', "N/A"),
+                    wallet_classification=classification.get('cluster_type', "N/A"),
+                    wallet_label=classification.get('label', ""),
+                    confidence=classification.get('confidence', 0),
+                    description=classification.get('description', "")
+                )
+            
+            # Arista con información de la transacción entre direcciones
+            # label incluye BTC movidos + path/hop para verlo directamente en la visualización
+            # Determinar nota específica para esta arista
+            edge_notes = ""
+            if not should_follow:
+                edge_notes = f"No seguido: {classification['cluster_type']}"
+            
+            self.G.add_edge(address, next_address,
+                label=f"{value_btc:.8f} BTC (path: {child_path}, hop: {hop})",
+                value_btc=value_btc,
+                txid=output['tx_hash'],
+                datetime=output['datetime_CET'].strftime('%Y-%m-%d %H:%M:%S'),
+                hop=hop,
+                path_id=child_path,
+                follow=should_follow,
+                btc_not_followed=0.0,  # Este campo se debería calcular por arista, no por hop
+                notes=edge_notes,
+                width=value_btc  # grosor proporcional en el renderizador
+            )
         
 
     def __btc_received_by_address_on_txs_since_block(self, address: str, start_block: int) -> dict:
@@ -212,17 +272,34 @@ class Tracer:
             # Verificar si la dirección está entre las entradas
             if any(inp.get('recipient') == from_address for inp in inputs):
                 # Es una transaccion OUT desde la direccion seguida
+                # Si ya hemos gastado todo lo que estamos siguiendo, saltar esta transacción
+                if btc_output_accumulated >= btc_received:
+                    logger.debug(f"Ya se gastaron {btc_output_accumulated:.10f} BTC (>= {btc_received:.10f}). Saltando tx {tx.get('hash')}")
+                    continue
+                
                 for outp in outputs:
                     satoshis_out = outp.get('value', 0)
                     btc_out = satoshis_out / SAT_PER_BTC
+                    recipient = outp.get('recipient')
+                    
+                    # IMPORTANTE: Ignorar outputs que vuelven a la misma dirección (change interno)
+                    if recipient == from_address:
+                        logger.debug(f"Output ignorado: {recipient} es la misma dirección que el input (change). {btc_out:.10f} BTC no se siguen.")
+                        btc_not_followed += btc_out
+                        continue
+                    
+                    # Calcular cuánto queda por gastar del monto que estamos siguiendo
+                    remaining_to_spend = btc_received - btc_output_accumulated
+                    
                     # Si ya hemos acumulado todo lo que la dirección ha recibido, los siguientes outputs no se siguen
-                    logger.debug(f"Evaluando output a {outp.get('recipient')} con {btc_out:.10f} BTC en tx {tx.get('hash')} - btc_output_accumulated: {btc_output_accumulated:.10f}, btc_received: {btc_received:.10f} en tx con fee {fee:.10f} BTC")
-                    if btc_output_accumulated <= (btc_received-fee):
+                    logger.debug(f"Evaluando output a {recipient} con {btc_out:.10f} BTC en tx {tx.get('hash')} - btc_output_accumulated: {btc_output_accumulated:.10f}, btc_received: {btc_received:.10f}, remaining: {remaining_to_spend:.10f}")
+                    
+                    if remaining_to_spend > 0:
                         if btc_out / total_input_btc > self.threshold:
                             # Añadir la dirección de la salida y la cantidad recibida a la lista de seguimiento como un diccionario
                             txs_outputs_to_follow.append({
                                 'tx_hash': tx.get('hash'),
-                                'recipient': outp.get('recipient'),
+                                'recipient': recipient,
                                 'value': outp.get('value', 0),
                                 'value_btc': btc_out,
                                 'value_usd': outp.get('value_usd', 0),
@@ -230,14 +307,14 @@ class Tracer:
                                 'datetime_CET': dt_cet
                             })
                         else:
-                            logger.debug(f"Output a {outp.get('recipient')} con {btc_out:.10f} BTC no supera el umbral del {self.threshold*100}% del total recibido ({total_input_btc:.10f} BTC). Se suman a BTCs no seguidos.")
+                            logger.debug(f"Output a {recipient} con {btc_out:.10f} BTC no supera el umbral del {self.threshold*100}% del total recibido ({total_input_btc:.10f} BTC). Se suman a BTCs no seguidos.")
                             btc_not_followed += btc_out
                         btc_output_accumulated += btc_out
                     else:
-                        logger.debug(f"Ya se han seguido BTCs por un total de {btc_output_accumulated:.10f} BTC, que supera los {btc_received - fee:.10f} BTC recibidos (menos fee). No se sigue el output a {outp.get('recipient')} con {btc_out:.10f} BTC. Pero se registran")
+                        logger.debug(f"Ya se gastaron todos los {btc_received:.10f} BTC recibidos. No se sigue el output a {recipient} con {btc_out:.10f} BTC. Pero se registran")
                         txs_outputs_after_flow.append({
                             'tx_hash': tx.get('hash'),
-                            'recipient': outp.get('recipient'),
+                            'recipient': recipient,
                             'value': outp.get('value', 0),
                             'value_btc': btc_out,
                             'value_usd': outp.get('value_usd', 0),
@@ -249,3 +326,9 @@ class Tracer:
         txs_outputs_to_follow.sort(key=lambda x: x['value_btc'], reverse=True)
         return txs_outputs_to_follow, txs_outputs_after_flow, btc_not_followed 
         
+    def get_graph_data(self) -> dict:
+        """
+        Exporta el grafo como datos node-link (NetworkX json_graph).
+        Útil para visualización y almacenamiento sin depender de pyvis.
+        """
+        return nx.json_graph.node_link_data(self.G)

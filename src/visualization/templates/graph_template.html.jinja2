@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ title }}</title>
+  
+  <!-- Bootstrap CSS + JS (before vis.js) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- vis.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.css" rel="stylesheet" type="text/css" />
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+      background-color: #f8f9fa;
+    }
+    
+    /* Header simple */
+    header {
+      background: white;
+      padding: 25px 30px;
+      border-bottom: 1px solid #e0e0e0;
+      flex-shrink: 0;
+    }
+    
+    header h1 {
+      font-size: 24px;
+      color: #2c3e50;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+    
+    header p {
+      color: #555;
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 4px 0;
+    }
+    
+    /* Contenedor del grafo */
+    #network {
+      flex: 1;
+      background-color: #ffffff;
+      overflow: hidden;
+      position: relative;
+      border-left: 1px solid #e5e7eb;
+    }
+    
+    /* Panel de información fijo en columna izquierda */
+    #info {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 14px 16px;
+      font-size: 14px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+    
+    #info strong {
+      color: #2c3e50;
+      display: block;
+      margin-bottom: 8px;
+    }
+    
+    #info line {
+      display: block;
+      color: #666;
+      margin: 3px 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header único -->
+  <header>
+    <h1>Análisis de Flujos Bitcoin en Ciberdelincuencia</h1>
+    <p>Seguimiento de transacciones Bitcoin en casos de Ciberdelincuencia</p>
+    <p>Herramientas desarrolladas como parte del TFG - Universidad Internacional de la Rioja (UNIR)</p>
+  </header>
+
+  <!-- Grafo a pantalla completa bajo la cabecera -->
+  <div id="network" style="height: calc(100vh - 100px);"></div>
+
+  <!-- Modal Bootstrap sencillo para detalles -->
+  <div class="modal fade" id="detailsModal" tabindex="-1" aria-labelledby="detailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="detailsModalLabel">Detalles</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body" id="detailsModalBody">Cargando...</div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Bootstrap para mostrar detalles al clicar -->
+  <div class="modal fade" id="infoModal" tabindex="-1" aria-labelledby="infoModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="infoModalLabel">Detalles</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body" id="infoContent">
+          Cargando...
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Datos del grafo
+    const rawData = {{ graph_data_json }};
+    
+    // Validar que existen nodos y links
+    if (!rawData || !rawData.nodes || !rawData.links) {
+      console.error('Datos del grafo inválidos:', rawData);
+      document.getElementById('info').innerHTML = '<strong style="color: red;">Error: Datos del grafo no válidos</strong>';
+      throw new Error('rawData.nodes o rawData.links no están definidos');
+    }
+    
+    // El nodo root es el que tiene hop=1 y path=0 como source (y nunca aparece como target)
+    const targetIds = new Set(rawData.links.map(link => link.target));
+    const rootLink = rawData.links.find(link => (link.hop === 1 || link.hop === 0) && (link.path_id === 0));
+    const rootNode = rootLink ? rawData.nodes.find(node => node.id === rootLink.source) : rawData.nodes.find(node => !targetIds.has(node.id));
+    
+    if (!rootNode) {
+      console.error('No se pudo identificar el nodo root');
+      document.getElementById('info').innerHTML = '<strong style="color: red;">Error: No se encontró nodo raíz</strong>';
+      throw new Error('No se encontró el nodo root');
+    }
+    
+    // Calcular posiciones basadas en path y hop
+    const nodePositions = new Map();
+    const pathVerticalOffset = 150; // Espacio reducido entre paths
+    const hopHorizontalOffset = 320; // Espacio entre hops
+    
+    // Root node en posición 0,0
+    nodePositions.set(rootNode.id, { x: 0, y: 0 });
+    
+    // Calcular posición de cada nodo basándose en los links
+    rawData.links.forEach(link => {
+      // Usar directamente los atributos path_id y hop
+      const path = link.path_id || 0;
+      const hop = link.hop || 1;
+      const x = hop * hopHorizontalOffset;
+      const y = path * pathVerticalOffset;
+      nodePositions.set(link.target, { x, y });
+    });
+    
+    // Precalcular conjunto de nodos finales (sin salidas)
+    const sourceIds = new Set(rawData.links.map(link => link.source));
+    const finalNodeIds = new Set(rawData.nodes.filter(node => !sourceIds.has(node.id)).map(n => n.id));
+
+    // Preparar nodos con posiciones fijas y colores por rol
+    const nodes = new vis.DataSet(
+      rawData.nodes.map(node => {
+        const isRoot = node.id === rootNode.id;
+        const isFinal = finalNodeIds.has(node.id);
+        const nodeColor = isRoot ? '#1976d2' : (isFinal ? '#d32f2f' : '#2e7d32');
+        
+        const pos = nodePositions.get(node.id) || { x: 0, y: 0 };
+        
+        return {
+          id: node.id,
+          label: node.label,
+          title: `Address: ${node.address}\nHops: ${rawData.links.filter(l => l.source === node.id || l.target === node.id).length}`,
+          color: {
+            background: nodeColor,
+            border: '#333',
+            highlight: { background: nodeColor, border: '#ff0000' }
+          },
+          font: { size: 26, color: '#fff', bold: isRoot },
+          shape: 'box',
+          x: pos.x,
+          y: pos.y,
+          fixed: true
+        };
+      })
+    );
+    
+    // Calcular rango de valores BTC para normalizar grosor
+    const btcValues = rawData.links.map(link => link.value_btc || 0);
+    const maxBtc = Math.max(...btcValues);
+    const minBtc = Math.min(...btcValues.filter(v => v > 0));
+    
+    // Preparar aristas
+    const edges = new vis.DataSet(
+      rawData.links.map(link => {
+        // Normalizar grosor: mapear valor BTC a rango 1-5
+        const normalizedWidth = maxBtc > 0 
+          ? 1 + (link.value_btc / maxBtc) * 4 
+          : 2;
+        
+        // Construir label con BTC redondeado a 4 decimales
+        const btcLabel = link.value_btc.toFixed(4);
+        const displayLabel = `${btcLabel} BTC\n(path: ${link.path_id}, hop: ${link.hop})`;
+        
+        return {
+          from: link.source,
+          to: link.target,
+          label: displayLabel,
+          title: `BTC: ${link.value_btc.toFixed(8)}\nTxID: ${link.txid}`,
+          color: link.follow ? '#333' : '#ccc',
+          dashes: !link.follow,
+          width: normalizedWidth,
+          arrows: 'to',
+          smooth: { type: 'cubicBezier' },
+          font: { size: 20, align: 'horizontal' }
+        };
+      })
+    );
+    
+    // Configuración con posiciones fijas
+    const options = {
+      physics: { enabled: false },
+      interaction: {
+        hover: true,
+        dragNodes: true,
+        dragView: true
+      },
+      edges: {
+        smooth: {
+          type: 'cubicBezier',
+          roundness: 0.4
+        }
+      }
+    };
+    
+    // Crear red
+    const container = document.getElementById('network');
+    const network = new vis.Network(container, { nodes, edges }, options);
+    
+    // Ajustar vista
+    network.fit();
+    
+    // Modal Bootstrap (sencillo)
+    const detailsModalEl = document.getElementById('detailsModal');
+    const detailsModalBody = document.getElementById('detailsModalBody');
+    const detailsModal = detailsModalEl ? new bootstrap.Modal(detailsModalEl) : null;
+    
+    // Click: mostrar detalles en modal (simple)
+    network.on('click', function(params) {
+      // Click en nodo
+      if (params.nodes && params.nodes.length > 0) {
+        const nodeId = params.nodes[0];
+        const node = rawData.nodes.find(n => n.id === nodeId);
+        if (node) {
+          const outgoing = rawData.links.filter(l => l.source === node.id);
+          const incoming = rawData.links.filter(l => l.target === node.id);
+          const html = `
+            <div class="mb-2"><strong>${node.label}</strong></div>
+            <div><strong>Address:</strong> ${node.address}</div>
+            <div><strong>Wallet ID:</strong> ${node.wallet_explorer_id}</div>
+            <div><strong>Classification:</strong> ${node.wallet_classification}</div>
+            <div><strong>Label:</strong> ${node.wallet_label}</div>
+            <div><strong>Confidence:</strong> ${(node.confidence * 100).toFixed(0)}%</div>
+            <div><strong>Description:</strong> ${node.description || ''}</div>
+            <div><strong>Outgoing links:</strong> ${outgoing.length}</div>
+            <div><strong>Incoming links:</strong> ${incoming.length}</div>`;
+          if (detailsModal) {
+            detailsModalBody.innerHTML = html;
+            detailsModal.show();
+          }
+        }
+        return;
+      }
+      // Click en arista
+      if (params.edges && params.edges.length > 0) {
+        const edgeId = params.edges[0];
+        // Obtener la arista desde el DataSet de vis.js
+        const edgeData = edges.get(edgeId);
+        // Buscar en rawData.links el link que corresponde (por from, to, y txid)
+        const link = rawData.links.find(l => 
+          l.source === edgeData.from && 
+          l.target === edgeData.to && 
+          l.txid === edgeData.title?.split('TxID: ')[1]?.split('\n')[0]
+        );
+        
+        // Si no encuentra por esa lógica, intenta por from+to (puede haber múltiples si misma tx)
+        const fallbackLink = link || rawData.links.find(l => 
+          l.source === edgeData.from && 
+          l.target === edgeData.to
+        );
+        
+        const displayLink = fallbackLink || { error: 'No se encontraron detalles' };
+        if (displayLink && detailsModal) {
+          let html = '';
+          if (displayLink.error) {
+            html = `<div style="color: red;"><strong>${displayLink.error}</strong></div>`;
+          } else {
+            html = `
+            <div class="mb-2"><strong>Transacción</strong></div>
+            <div><strong>From:</strong> ${displayLink.source}</div>
+            <div><strong>To:</strong> ${displayLink.target}</div>
+            <div><strong>BTC:</strong> ${displayLink.value_btc.toFixed(8)}</div>
+            <div><strong>Path:</strong> ${displayLink.path_id}</div>
+            <div><strong>Hop:</strong> ${displayLink.hop}</div>
+            <div><strong>TxID:</strong> ${displayLink.txid}</div>
+            <div><strong>Fecha:</strong> ${displayLink.datetime}</div>
+            <div><strong>Follow:</strong> <span style="color: ${displayLink.follow ? 'green' : 'red'}">${displayLink.follow ? '✓ Sí' : '✗ No'}</span></div>
+            <div><strong>BTC no seguidos:</strong> ${displayLink.btc_not_followed?.toFixed ? displayLink.btc_not_followed.toFixed(8) : displayLink.btc_not_followed || 0}</div>
+            <div><strong>Notas:</strong> ${displayLink.notes || '(ninguna)'}</div>`;
+          }
+          detailsModalBody.innerHTML = html;
+          detailsModal.show();
+        }
+        return;
+      }
+      // Clic en vacío: no hacemos nada
+    });
+  </script>
+</body>
+</html>

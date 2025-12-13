@@ -1,10 +1,12 @@
 import sys
+import json
 import argparse
+from pathlib import Path
 from src.utils.logger import get_logger
 from src.tracer.tracer import Tracer
 from src.export.export import export_fund_flow_records_to_csv
-from src.visualization.flow_graph_visualizer import FlowGraphVisualizer
-from src.utils.cache import save_records_to_cache, load_records_from_cache, list_cache_files, clear_all_cache
+from src.visualization.graph_html_generator import GraphHTMLGenerator
+from src.utils.cache import *
 from config import THRESHOLD, MAX_HOPS, BLOCKCHAIR_API_KEY, BLOCKCYPHER_API_KEY
 
 logger = get_logger(__name__)
@@ -18,8 +20,15 @@ def main():
     parser.add_argument('--list-cache', '-l', action='store_true', help='List available cache files')
     parser.add_argument('--clear-cache', action='store_true', help='Clear all cache files')
     
+    #Ejemplo de uso:
+        # python main.py bc1qexampleaddress 920802
+        # python main.py --from-cache cache_abc123.json
+        # python main.py --list-cache
+        # python main.py --clear-cache
     args = parser.parse_args()
     
+    tracer = None
+
     # Listar cache
     if args.list_cache:
         list_cache_files()
@@ -33,17 +42,18 @@ def main():
     # Cargar desde cache
     if args.from_cache:
         logger.info(f"Cargando desde cache: {args.from_cache}")
-        cached_data = load_records_from_cache(args.from_cache)
+        cached_data = load_cache(args.from_cache)
         if not cached_data:
             logger.error("No se pudo cargar el cache")
             return
         
         root_address = cached_data['root_address']
         records = cached_data['records']
+        graph_data = cached_data['graph']
         
         logger.info(f"Cargados {len(records)} registros desde cache")
     
-    # Trace normal
+    # No se carga desde cache, iniciar nuevo tracing
     else:
         if not args.address or not args.block:
             # Valores por defecto para testing en un caso de suplantación conocida
@@ -67,18 +77,28 @@ def main():
             maxhops=MAX_HOPS
         )
         tracer.trace(address=root_address, start_block=start_block)
+
+        # Obtener registros y grafo
+
         records = tracer.fund_flow_records
+        graph_data = tracer.get_graph_data()
         
         # Guardar en cache
-        cache_file = save_records_to_cache(records, root_address)
-        logger.info(f"Cache guardado en: {cache_file}")
+        records_cache_file = save_cache(records, graph_data, root_address)
+        logger.info(f"Cache guardado en: {records_cache_file}")
     
     # Exportar CSV
-    export_fund_flow_records_to_csv(records, 'output/fund_flow_records.csv')
+    fund_flow_records_csv_path = Path('output/fund_flow_records.csv')
+    export_fund_flow_records_to_csv(records, str(fund_flow_records_csv_path))
+
+    # Exportar grafo a JSON
+    graph_json_path = Path('output/fund_flow_graph.json')
+    with open(graph_json_path, 'w', encoding='utf-8') as f:
+        json.dump(graph_data, f, indent=2, ensure_ascii=False)
     
-    # Generar visualizacion
-    visualizer = FlowGraphVisualizer(records, root_address)
-    visualizer.generate_graph("output/fund_flow_graph.html")
+    # Generar visualización HTML desde el grafo JSON
+    html_generator = GraphHTMLGenerator(graph_data)
+    html_generator.generate('output/fund_flow_graph.html')
     
     logger.info(f"{'*'*20} ANALISIS COMPLETADO {'*'*20}")
 

@@ -10,41 +10,48 @@ logger = get_logger(__name__)
 
 CACHE_DIR = "output/cache"
 
-
-def save_records_to_cache(records: List[FundFlowRecord], root_address: str, cache_file: str = None):
+def save_cache(records: List[FundFlowRecord], graph_data: dict, root_address: str, cache_file: str = None):
     """
-    Guarda los registros de flujo en cache (JSON).
+    Guarda en cache tanto los registros como el grafo (node_link_data).
+    - records: lista de FundFlowRecord
+    - graph_data: dict exportado por networkx.json_graph.node_link_data(self.G)
     """
     os.makedirs(CACHE_DIR, exist_ok=True)
-    
+
     if not cache_file:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        cache_file = f"{CACHE_DIR}/flow_records_{root_address[:10]}_{timestamp}.json"
-    
+        cache_file = f"{CACHE_DIR}/trace_cached_{root_address[:10]}_{timestamp}.json"
+
     try:
-        # Convertir FundFlowRecords a diccionarios
         records_dict = [asdict(record) for record in records]
-        
+
+        # Derivar métricas del grafo si están presentes
+        nodes_count = len(graph_data.get('nodes', [])) if isinstance(graph_data, dict) else 0
+        links_count = len(graph_data.get('links', [])) if isinstance(graph_data, dict) else 0
+
         cache_data = {
             'root_address': root_address,
             'timestamp': datetime.now().isoformat(),
             'total_records': len(records),
-            'records': records_dict
+            'records': records_dict,
+            'graph': graph_data,
+            'graph_nodes': nodes_count,
+            'graph_links': links_count,
         }
-        
+
         with open(cache_file, 'w', encoding='utf-8') as f:
             json.dump(cache_data, f, indent=2, ensure_ascii=False, default=str)
-        
-        logger.info(f"{len(records)} registros guardados en cache: {cache_file}")
+
+        logger.info(f"Cache completo (records+graph) guardado: {cache_file}")
         return cache_file
     except Exception as e:
-        logger.error(f"Error guardando cache: {e}")
+        logger.error(f"Error guardando cache completo: {e}")
         return None
 
 
-def load_records_from_cache(cache_file: str) -> dict:
+def load_cache(cache_file: str) -> dict:
     """
-    Carga registros desde cache (JSON).
+    Carga registros y grafo desde cache (JSON).
     Retorna dict con 'root_address', 'timestamp', 'records'.
     """
     if not os.path.exists(f"{CACHE_DIR}/{cache_file}"):
@@ -89,11 +96,14 @@ def load_records_from_cache(cache_file: str) -> dict:
             )
             records.append(record)
             
-            result = {
-                'root_address': cache_data['root_address'],
-                'timestamp': cache_data['timestamp'],
-                'records': records
-            }
+        result = {
+            'root_address': cache_data.get('root_address'),
+            'timestamp': cache_data.get('timestamp'),
+            'records': records,
+            'graph': cache_data.get('graph'),
+            'graph_nodes': cache_data.get('graph_nodes'),
+            'graph_links': cache_data.get('graph_links'),
+        }
 
         logger.info(f"{len(records)} registros cargados desde cache: {cache_file}")
         logger.info(f"Root address: {result['root_address']}, Timestamp: {result['timestamp']}")
@@ -122,16 +132,20 @@ def list_cache_files():
         
         # Leer metadata del JSON
         try:
-            with open(full_path, 'r') as file:
+            with open(full_path, 'r', encoding='utf-8') as file:
                 data = json.load(file)
                 timestamp = data.get('timestamp', 'N/A')
                 root = data.get('root_address', 'N/A')
                 records_count = data.get('total_records', 0)
+                graph_nodes = data.get('graph_nodes', 0)
+                graph_links = data.get('graph_links', 0)
             logger.info(f"  - {f}")
             logger.info(f"    Size: {size_mb:.2f} MB")
             logger.info(f"    Root: {root}")
             logger.info(f"    Records: {records_count}")
             logger.info(f"    Timestamp: {timestamp}")
+            if graph_nodes or graph_links:
+                logger.info(f"    Graph: nodes={graph_nodes}, links={graph_links}")
         except:
             logger.info(f"  - {f} ({size_mb:.2f} MB) - Error leyendo metadata")
     
@@ -139,14 +153,20 @@ def list_cache_files():
 
 
 def delete_cache_file(cache_file: str):
-    """Elimina un archivo de cache."""
+    """Elimina un archivo de cache.
+    Acepta nombre de archivo (basename) o ruta completa.
+    """
     try:
-        if os.path.exists(f"{CACHE_DIR}/{cache_file}"):
-            os.remove(f"{CACHE_DIR}/{cache_file}")
-            logger.info(f"Cache eliminado: {cache_file}")
+        # Normalizar: si viene ruta completa, extraer basename
+        basename = os.path.basename(cache_file)
+        target_path = os.path.join(CACHE_DIR, basename)
+
+        if os.path.exists(target_path):
+            os.remove(target_path)
+            logger.info(f"Cache eliminado: {basename}")
             return True
         else:
-            logger.warning(f"Cache no encontrado: {cache_file}")
+            logger.warning(f"Cache no encontrado: {basename}")
             return False
     except Exception as e:
         logger.error(f"Error eliminando cache: {e}")
@@ -158,17 +178,17 @@ def clear_all_cache():
     if not os.path.exists(CACHE_DIR):
         logger.warning(f"Directorio de cache no existe: {CACHE_DIR}")
         return 0
-    
-    cache_files = [os.path.join(CACHE_DIR, f) for f in os.listdir(CACHE_DIR) if f.endswith('.json')]
-    
+
+    cache_files = [f for f in os.listdir(CACHE_DIR) if f.endswith('.json')]
+
     if not cache_files:
         logger.info("No hay archivos de cache para eliminar.")
         return 0
-    
+
     deleted = 0
-    for cache_file in cache_files:
-        if delete_cache_file(cache_file):
+    for fname in cache_files:
+        if delete_cache_file(fname):
             deleted += 1
-    
+
     logger.info(f"{deleted} archivos de cache eliminados")
     return deleted

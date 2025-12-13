@@ -1,6 +1,6 @@
 # Seguimiento de transacciones Bitcoin en casos de Ciberdelincuencia
 ## Herramientas desarrolladas como parte del TFG del Grado de Ingeniería Informática en la Universidad Internacional de la Rioja (UNIR)
-### TFG: Bitcoin y Ciberdelincuencia: aBitcoin y ciberdelincuencia: rastreo y análisis de transacciones
+### TFG: Bitcoin y Ciberdelincuencia: Bitcoin y ciberdelincuencia: rastreo y análisis de transacciones
 
 ### Fecha: Otoño / Invierno 2025
 
