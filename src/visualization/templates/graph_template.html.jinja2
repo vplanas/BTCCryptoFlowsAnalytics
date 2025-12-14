@@ -319,6 +319,7 @@
             <div><strong>Fecha:</strong> ${displayLink.datetime}</div>
             <div><strong>Follow:</strong> <span style="color: ${displayLink.follow ? 'green' : 'red'}">${displayLink.follow ? '✓ Sí' : '✗ No'}</span></div>
             <div><strong>BTC no seguidos:</strong> ${displayLink.btc_not_followed?.toFixed ? displayLink.btc_not_followed.toFixed(8) : displayLink.btc_not_followed || 0}</div>
+            <div><strong>BTC consolidados (externos):</strong> ${displayLink.btc_added_from_others?.toFixed ? displayLink.btc_added_from_others.toFixed(8) : displayLink.btc_added_from_others || 0}</div>
             <div><strong>Notas:</strong> ${displayLink.notes || '(ninguna)'}</div>`;
           }
           detailsModalBody.innerHTML = html;

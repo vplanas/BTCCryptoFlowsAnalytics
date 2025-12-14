@@ -11,18 +11,7 @@ class WalletExplorerClient:
         self.base_url = "https://www.walletexplorer.com/api/1"
 
     def get_wallet_from_address(self, address: str) -> Optional[Dict]:
-        """
-        Consulta la API para obtener wallet info desde una dirección.
-        Retorna el objeto completo de la API si found=True, o None si no encontrado.
-        
-        Ejemplo de respuesta:
-        {
-            "found": true,
-            "label": "Kraken.com",
-            "wallet_id": "00001012b1848923",
-            "updated_to_block": 923639
-        }
-        """
+        """Busca si una dirección pertenece a algún wallet conocido (cluster)."""
         url = f"{self.base_url}/address-lookup"
         params = {"address": address}
         try:
@@ -44,9 +33,7 @@ class WalletExplorerClient:
             raise
 
     def get_wallet_transactions(self, wallet_id: str, from_idx: int = 0, count: int = 100) -> Optional[Dict]:
-        """
-        Obtiene transacciones de un wallet dado el wallet ID.
-        """
+        """Obtiene las txs de un wallet (paginado)."""
         url = f"{self.base_url}/wallet"
         params = {
             "wallet": wallet_id,
@@ -64,9 +51,7 @@ class WalletExplorerClient:
             raise
 
     def get_wallet_addresses(self, wallet_id: str, from_idaddr: int = 0, count: int = 100) -> Optional[Dict]:
-        """     
-        Obtiene las direcciones asociadas a un wallet dado el wallet ID.
-        """
+        """Obtiene las direcciones de un wallet (paginado)."""
         url = f"{self.base_url}/wallet-addresses"
         params = {
             "wallet": wallet_id,

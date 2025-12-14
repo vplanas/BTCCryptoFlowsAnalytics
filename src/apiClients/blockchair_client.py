@@ -13,14 +13,12 @@ class BlockchairClient:
         self.cache = {}
 
     def get_address_info(self, address: str) -> Dict:
-        """
-        Obtiene datos básicos de la dirección: saldo, número de transacciones, etc.
-        """
+        """Obtiene info básica de una dirección (saldo, nº txs, etc)."""
         try:
             url = f"{self.base_url}/dashboards/address/{address}"
             params = {"key": self.api_key}
             response = requests.get(url, params=params, timeout=self.timeout)
-            response.raise_for_status() # Asegura que la respuesta fue exitosa sino lanza una excepción
+            response.raise_for_status()
             data = response.json()
             logger.info(f"Datos básicos obtenidos para {address}")
             logger.debug(f"Datos obtenidos para {address}: {data}")
@@ -30,12 +28,9 @@ class BlockchairClient:
             return {}
         
     def get_transactions(self, address: str, start_block: int, offset: int = 0, limit: int = 100) -> List[Dict]:
-        """
-        Obtiene transacciones de la dirección con paginación y
-        luego filtra localmente las transacciones por block_id >= start_block.
-        """
+        """Obtiene txs de una dirección desde un bloque (con paginación)."""
         try:
-            logger.info(f"Obteniendo transacciones para {address} desde bloque {start_block} (offset: {offset}, limit: {limit})")
+            logger.info(f"Obteniendo txs para {address} desde bloque {start_block} (offset: {offset}, limit: {limit})")
             url = f"{self.base_url}/dashboards/address/{address}"
             params = {
                 "key": self.api_key,
@@ -64,9 +59,9 @@ class BlockchairClient:
                             tx_summary['details'] = tx_detail
                             filtered_txs.append(tx_summary)
                     else:
-                        # Las transacciones están ordenadas en orden descendente de mas reciente a mas antiguo
-                        # Si encontramos una transacción antes del start_block, podemos detenernos y no seguir buscando
-                        logger.info(f"Transacción {tx_summary.get('hash')} en bloque {tx_summary.get('block_id')} es anterior a start_block {start_block}, deteniendo búsqueda. Las próximas transacciones serían aún más antiguas.")
+                        # Las txs vienen ordenadas de más reciente a más antigua
+                        # Si encontramos una anterior al start_block, ya no hay más que revisar
+                        logger.info(f"Tx {tx_summary.get('hash')} es anterior al bloque {start_block}, paramos")
                         break
                 logger.info(f"Seleccionadas {len(filtered_txs)} transacciones filtradas desde bloque {start_block}")
                 return filtered_txs
@@ -77,13 +72,11 @@ class BlockchairClient:
             return []
 
     def get_all_transactions(self, address: str, start_block: int, max_records: int = 1000) ->  Tuple[List[Dict], bool]:
-        """
-        Obtiene todas las transacciones desde start_block paginando de forma completa hasta un máximo de max_records. Si se alcanza max_records, devuelve False en el segundo valor de la tupla.
-        """
+        """Obtiene todas las txs desde start_block paginando (máx max_records)."""
         all_txs = []
         offset = 0
         limit = 100
-        logger.info(f"Obteniendo todas las transacciones para {address} desde bloque {start_block} hasta un máximo de {max_records} registros")
+        logger.info(f"Obteniendo todas las txs para {address} desde bloque {start_block} (máx {max_records})")
         while offset < max_records:
             txs = self.get_transactions(address, start_block, offset=offset, limit=min(limit, max_records))
             if not txs:
@@ -96,15 +89,13 @@ class BlockchairClient:
         return all_txs, len(all_txs) == max_records
 
     def get_transaction_detail(self, txid: str) -> Dict:
-        """
-        Obtiene detalles completos de una transacción (inputs y outputs).
-        """
+        """Obtiene inputs/outputs de una tx (con cache)."""
         if txid in self.cache:
-            logger.info(f"Detalles de {txid} obtenidos de cache")
+            logger.info(f"Detalles de {txid} en cache")
             return self.cache[txid]
 
         try:
-            logger.info(f"Obteniendo detalles de {txid} desde la API")
+            logger.info(f"Pidiendo detalles de {txid} a la API")
             url = f"{self.base_url}/dashboards/transactions/{txid}"
             params = {
                 "key": self.api_key
@@ -115,16 +106,22 @@ class BlockchairClient:
 
             if data.get('data') and txid in data['data']:
                 tx_data = data['data'][txid]
+                
+                # Normalizamos los nombres de campos para hacerlos más claros
+                inputs = tx_data.get('inputs', [])
+                for inp in inputs:
+                    inp['previous_txid'] = inp.get('transaction_hash')
+                    inp['previous_output_index'] = inp.get('index')
+                
                 tx_detail = {
                     'hash': txid,
                     'time': tx_data.get('transaction', {}).get('time'),
-                    'inputs': tx_data.get('inputs', []),
+                    'inputs': inputs,
                     'outputs': tx_data.get('outputs', []),      
                     'fee': tx_data.get('transaction', {}).get('fee', 0)
                 }                       
                 logger.debug(f"Detalles de tx {txid}: {tx_detail}")
 
-                # Almacena en cache
                 self.cache[txid] = tx_detail
                 return tx_detail
 

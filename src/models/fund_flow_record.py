@@ -1,17 +1,10 @@
 from dataclasses import dataclass
 from datetime import datetime
 
-'''''
-El decorador @dataclass automatiza la generación de métodos comunes en las clases de Python,
-como el constructor (init), el representador (repr) y el comparador (eq),
-'''
+# @dataclass genera automáticamente __init__, __repr__, __eq__, etc.
 @dataclass
 class FundFlowRecord:
-    """
-    Representa un registro individual en el seguimiento del flujo de fondos en blockchain.
-    Cada registro describe un 'hop' del fondo, con detalles sobre origen y destino,
-    clasificación, y métricas para análisis forense.
-    """
+    """Registro de un hop en el rastreo de flujo de fondos."""
 
     seed_case: str              # Dirección o caso semilla del rastreo
     path_id: int               # ID del camino o ruta seguida por el flujo

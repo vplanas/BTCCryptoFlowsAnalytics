@@ -1,9 +1,7 @@
 import csv
 
-'''
-Módulo para exportar los registros de flujo de fondos a CSV.
-'''
 def export_fund_flow_records_to_csv(records, filepath):
+    """Exporta los registros de flujo a CSV ordenados por path y hop."""
     with open(filepath, mode='w', newline='', encoding='utf-8') as csvfile:
         fieldnames = [
             'seed_case', 'path_id', 'hop', 'follow', 'input', 'output', 'wallet_explorer_id',
@@ -12,8 +10,9 @@ def export_fund_flow_records_to_csv(records, filepath):
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
+        
+        # Ordenamos por path y hop para que sea más fácil de leer
         for record in sorted(records, key=lambda r: (r.path_id, r.hop)):
-            # Los número decimales se formatean con 10 decimales
             writer.writerow({
                 'seed_case': record.seed_case,
                 'path_id': record.path_id,

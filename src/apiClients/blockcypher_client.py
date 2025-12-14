@@ -8,7 +8,6 @@ import time
 logger = get_logger(__name__)
 
 
-# Cliente para la API de BlockCypher
 class BlockCypherClient:
     def __init__(self, apikey: str = BLOCKCYPHER_API_KEY, timeout: float = 10.0):
         self.apikey = apikey
@@ -19,7 +18,6 @@ class BlockCypherClient:
         logger.debug(f"BlockCypherClient inicializado con timeout={timeout}s")
 
 
-    # Espera para respetar el rate limit de la API
     def _wait_for_rate_limit(self):
         """Espera 0.34s entre calls para <3/seg."""
         current_time = time.time()
@@ -31,9 +29,8 @@ class BlockCypherClient:
         self.last_call_time = time.time()
 
 
-    # Obtener transacciones posteriores entre dos bloques específicos, si la direccion tiene muchas transacciones puede devolver "nada", antes de llamar a este metodo se deberia comprobar el numero de transacciones de la direccion
     def get_txs_between_blocks(self, address: str, after: int, before: int) -> List[Dict]:
-        """Obtiene hasta 50 txs > block_height."""
+        """Obtiene hasta 50 txs entre dos bloques (puede fallar si hay muchas txs)."""
         logger.info(f"Solicitando txs para {address} entre bloques {after} y {before}")
         self._wait_for_rate_limit()
         

@@ -4,9 +4,7 @@ from typing import List, Optional
 
 @dataclass
 class Transaction:
-    """
-    Representa una transacción on-chain, con detalles
-    """
+    """Modelo para una tx on-chain."""
     txid: str                           # ID de la transacción
     block_time: Optional[datetime]      # Fecha y hora de la confirmación
     inputs: List[str]                   # Direcciones origen de la transacción

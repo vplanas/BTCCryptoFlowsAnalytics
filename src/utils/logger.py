@@ -2,9 +2,7 @@ import logging
 from config import LOG_LEVELS
 
 class ShortNameFilter(logging.Filter):
-    '''
-    Filtro de logging que añade el nombre corto del módulo al registro.
-    '''
+    '''Filtro para añadir el nombre corto del módulo a los logs.'''
     def __init__(self, shortname):
         super().__init__()
         self.shortname = shortname
@@ -44,10 +42,7 @@ def get_logger(name):
     return logger
 
 def _get_short_name(name):
-    """
-    Dado un nombre de módulo completo, devuelve solo el nombre base. Si tiene __ __, los elimina.
-    Ejemplo: 'src.apiClients.blockchair_client' -> 'blockchair_client'
-    """
+    """Devuelve solo el nombre base del módulo (sin 'src.xxx.')."""
     base_name = name.split('.')[-1]
     if base_name.startswith('__') and base_name.endswith('__'):
         # Si el nombre base está entre __ __, lo eliminamos.

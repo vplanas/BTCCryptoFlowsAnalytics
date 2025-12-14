@@ -11,11 +11,7 @@ logger = get_logger(__name__)
 CACHE_DIR = "output/cache"
 
 def save_cache(records: List[FundFlowRecord], graph_data: dict, root_address: str, cache_file: str = None):
-    """
-    Guarda en cache tanto los registros como el grafo (node_link_data).
-    - records: lista de FundFlowRecord
-    - graph_data: dict exportado por networkx.json_graph.node_link_data(self.G)
-    """
+    """Guarda los registros y el grafo en cache (JSON)."""
     os.makedirs(CACHE_DIR, exist_ok=True)
 
     if not cache_file:
@@ -50,10 +46,7 @@ def save_cache(records: List[FundFlowRecord], graph_data: dict, root_address: st
 
 
 def load_cache(cache_file: str) -> dict:
-    """
-    Carga registros y grafo desde cache (JSON).
-    Retorna dict con 'root_address', 'timestamp', 'records'.
-    """
+    """Carga los registros y el grafo desde cache."""
     if not os.path.exists(f"{CACHE_DIR}/{cache_file}"):
         logger.error(f"Archivo de cache no encontrado: {cache_file}")
         return None
@@ -114,7 +107,7 @@ def load_cache(cache_file: str) -> dict:
 
 
 def list_cache_files():
-    """Lista archivos de cache disponibles."""
+    """Lista los archivos de cache guardados."""
     if not os.path.exists(CACHE_DIR):
         logger.warning(f"Directorio de cache no existe: {CACHE_DIR}")
         return []
@@ -153,9 +146,7 @@ def list_cache_files():
 
 
 def delete_cache_file(cache_file: str):
-    """Elimina un archivo de cache.
-    Acepta nombre de archivo (basename) o ruta completa.
-    """
+    """Elimina un archivo de cache (por nombre o ruta completa)."""
     try:
         # Normalizar: si viene ruta completa, extraer basename
         basename = os.path.basename(cache_file)
@@ -174,7 +165,7 @@ def delete_cache_file(cache_file: str):
 
 
 def clear_all_cache():
-    """Elimina todos los archivos de cache."""
+    """Borra todos los archivos de cache."""
     if not os.path.exists(CACHE_DIR):
         logger.warning(f"Directorio de cache no existe: {CACHE_DIR}")
         return 0

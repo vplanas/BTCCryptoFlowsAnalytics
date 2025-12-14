@@ -1,10 +1,4 @@
-"""
-Genera un HTML simple e intuitivo desde un grafo JSON (node_link_data).
-Sin pyvis, usando vis.js directamente con layout jerárquico.
-El nodo seed estará a la izquierda y la red se expande hacia la derecha.
-
-Usa plantillas Jinja2 para separar HTML de la lógica Python.
-"""
+"""Genera visualización HTML del grafo usando vis.js y plantillas Jinja2."""
 from pathlib import Path
 import json
 from typing import Dict, Any
@@ -15,21 +9,10 @@ logger = get_logger(__name__)
 
 
 class GraphHTMLGenerator:
-    """
-    Genera visualización HTML de un grafo Bitcoin desde datos node_link_data.
-    - Recibe: dict con 'nodes' y 'links' (formato networkx json_graph.node_link_data)
-    - Genera: HTML con vis.js, layout jerárquico, nodo seed a la izquierda
-    - Usa plantilla Jinja2 para mantener HTML separado del código Python
-    """
+    """Genera HTML del grafo con vis.js y Jinja2."""
 
     def __init__(self, graph_data: Dict[str, Any], title: str = "Bitcoin Flow Graph"):
-        """
-        Inicializa el generador.
-        
-        Args:
-            graph_data: dict con estructura {'nodes': [...], 'links': [...]} o {'nodes': [...], 'edges': [...]}
-            title: título del HTML
-        """
+        """Inicializa con los datos del grafo y el título."""
         # Normalizar el formato: networkx usa 'edges', vis.js usa 'links'
         if 'edges' in graph_data and 'links' not in graph_data:
             graph_data['links'] = graph_data['edges']
@@ -38,16 +21,7 @@ class GraphHTMLGenerator:
         self.title = title
 
     def generate(self, output_file: str = "output/fund_flow_graph.html") -> Path:
-        """
-        Genera el archivo HTML con la visualización.
-        Carga la plantilla desde templates/graph_template.html.jinja2 y la renderiza con Jinja2.
-        
-        Args:
-            output_file: ruta donde guardar el HTML
-            
-        Returns:
-            Path al archivo generado
-        """
+        """Genera el HTML del grafo usando la plantilla Jinja2."""
         # Crear directorio de salida si no existe
         output_path = Path(output_file)
         output_path.parent.mkdir(parents=True, exist_ok=True)

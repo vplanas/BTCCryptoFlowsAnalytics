@@ -5,9 +5,7 @@ from typing import List, Optional
 # Modelo para un wallet o cluster identificado
 @dataclass
 class Wallet:
-    """
-    Representa un wallet o cluster, agrupando múltiples direcciones y atributos globales.
-    """
+    """Modelo para un wallet/cluster con varias direcciones."""
     wallet_id: str          # ID/etiqueta del wallet
     addresses: List[str]    # Lista de direcciones asociadas
     label: str = ""         # Etiqueta o nombre asignado por heurística o WalletExplorer o otros

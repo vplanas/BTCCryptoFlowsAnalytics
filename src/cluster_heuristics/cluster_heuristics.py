@@ -5,11 +5,9 @@ from src.apiClients.walletexplorer_client import WalletExplorerClient
 logger = get_logger(__name__)
 
 class ClusterHeuristics:
-    """
-    Clasifica clusters (wallets) de WalletExplorer mediante análisis de transacciones.
-    """
+    """Clasifica wallets/clusters usando WalletExplorer y heurísticas."""
     
-    # Mapeo de labels de WalletExplorer a tipos de cluster
+    # Keywords de labels conocidos por tipo
     LABEL_MAPPINGS = {
         'exchange': ['binance', 'coinbase', 'kraken', 'bitfinex', 'bitstamp', 'huobi', 'okex', 'bittrex', 'poloniex'],
         'mining': ['pool', 'f2pool', 'antpool', 'btc.com', 'slushpool', 'viaBTC', 'mining'],
@@ -24,9 +22,7 @@ class ClusterHeuristics:
         logger.debug("ClusterHeuristics inicializado.")
     
     def classify_address(self, address: str) -> Dict:
-        """
-        Clasifica una dirección obteniendo su cluster y analizándolo.
-        """
+        """Clasifica una dirección mirando a qué cluster pertenece."""
         logger.info(f"Iniciando clasificación de dirección: {address}")
         try:
             # Obtener wallet info completo
@@ -62,9 +58,7 @@ class ClusterHeuristics:
             return self._error_result(str(e))
     
     def classify_cluster(self, wallet_id: str) -> Dict:
-        """
-        Clasifica un cluster usando heurísticas (cuando no tiene label).
-        """
+        """Clasifica un cluster sin label usando heurísticas."""
         if wallet_id in self.cache:
             logger.info(f"Clasificación de cluster {wallet_id} obtenida desde cache.")
             return self.cache[wallet_id]
@@ -98,9 +92,7 @@ class ClusterHeuristics:
             return self._error_result(str(e))
     
     def _classify_from_label(self, wallet_id: str, label: str) -> Dict:
-        """
-        Clasifica basándose en la label de WalletExplorer (máxima confianza).
-        """
+        """Clasifica usando el label de WalletExplorer (alta confianza)."""
         label_lower = label.lower()
         
         # Buscar en mapeos conocidos
@@ -116,9 +108,7 @@ class ClusterHeuristics:
             description= f'Entidad etiquetada: {label}')
     
     def _analyze_cluster_patterns(self, wallet_id: str, wallet_data: Dict) -> Dict:
-        """
-        Aplica heurísticas basadas en patrones agregados del cluster (sin label).
-        """
+        """Aplica heurísticas sobre patrones de txs (para clusters sin label)."""
         txs = wallet_data.get('txs', [])
         query_n_txs = len(txs)
         total_txs = wallet_data.get('txs_count', 0)
