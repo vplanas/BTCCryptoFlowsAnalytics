@@ -20,10 +20,11 @@ def main():
     parser.add_argument('--list-cache', '-l', action='store_true', help='List available cache files')
     parser.add_argument('--clear-cache', action='store_true', help='Clear all cache files')
     
-    # Ejemplos:
-    # python main.py bc1qexampleaddress 920802
-    # python main.py --from-cache cache_abc123.json
-    # python main.py --list-cache
+    #Ejemplo de uso:
+        # python main.py bc1qexampleaddress 920802
+        # python main.py --from-cache cache_abc123.json
+        # python main.py --list-cache
+        # python main.py --clear-cache
     args = parser.parse_args()
     
     tracer = None
@@ -33,11 +34,12 @@ def main():
         list_cache_files()
         return
     
+    # Limpiar cache
     if args.clear_cache:
         clear_all_cache()
         return
     
-    # Cargar un análisis previo desde cache
+    # Cargar desde cache
     if args.from_cache:
         logger.info(f"Cargando desde cache: {args.from_cache}")
         cached_data = load_cache(args.from_cache)
@@ -56,14 +58,14 @@ def main():
         if not args.address or not args.block:
             # Casos de prueba (descomentar el que se quiera usar):
             # Suplantación:
-            #root_address = "bc1q8ssu2xvl8gj3qctz9d3qjfkcmdyxledp40hyp6"
-            #start_block = 920802
+            root_address = "bc1q8ssu2xvl8gj3qctz9d3qjfkcmdyxledp40hyp6"
+            start_block = 920802
             # Darkside - Colonial Pipeline:
             #root_address = "15JFh88FcE4WL6qeMLgX5VEAFCbRXjc9fr"
             #start_block = 682599
             # Otro ransomware:
-            root_address = "bc1qazjzkd4e572p8c2n4u0gaewhrwe8xxpaklq6fv"
-            start_block = 777026
+            #root_address = "bc1qazjzkd4e572p8c2n4u0gaewhrwe8xxpaklq6fv"
+            #start_block = 777026
             
             logger.warning(f"Usando dirección de prueba: {root_address} @ bloque {start_block}")
         else:
