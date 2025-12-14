@@ -321,8 +321,10 @@ class Tracer:
                     recipient = outp.get('recipient')
                     
                     # Ignoramos outputs que son change (vuelven a la misma dirección)
+                    # Importante: no descontamos este BTC del acumulado para no perder cobertura
                     if recipient == from_address:
                         logger.debug(f"Output a {recipient} es change, lo ignoramos ({btc_out:.10f} BTC)")
+                        # No sumamos al acumulado ni a no-seguidos; solo lo saltamos
                         continue
                     
                     remaining_to_spend = btc_received - btc_output_accumulated
