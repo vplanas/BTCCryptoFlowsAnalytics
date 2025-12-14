@@ -81,7 +81,7 @@
   </div>
 
   <script>
-    // Datos del grafo
+    // Datos del grafo en fromato JSON
     const rawData = {{ graph_data_json }};
     
     if (!rawData || !rawData.nodes || !rawData.links) {
@@ -90,13 +90,14 @@
     }
     
     // El nodo root es el que tiene hop=1 y path=0 como source (y nunca aparece como target)
+    // Obtenemos todos los target IDs desde los links (Aristas)
     const targetIds = new Set(rawData.links.map(link => link.target));
+    // Buscamos el nodo root. Puede ser el source del link con hop=1,path=0, o el que nunca es target
     const rootLink = rawData.links.find(link => (link.hop === 1 || link.hop === 0) && (link.path_id === 0));
     const rootNode = rootLink ? rawData.nodes.find(node => node.id === rootLink.source) : rawData.nodes.find(node => !targetIds.has(node.id));
     
     if (!rootNode) {
       console.error('No se pudo identificar el nodo root');
-      document.getElementById('info').innerHTML = '<strong style="color: red;">Error: No se encontró nodo raíz</strong>';
       throw new Error('No se encontró el nodo root');
     }
     
@@ -118,19 +119,24 @@
       nodePositions.set(link.target, { x, y });
     });
     
-    // Precalcular conjunto de nodos finales (sin salidas)
+    // Precalcular conjunto de nodos finales (los que no tienen salidas)
+    // Set crear un conjunto sin repetidos de IDs que son origen de las aristas (source)
     const sourceIds = new Set(rawData.links.map(link => link.source));
+    // Los nodos finales son los que no están en sourceIds
     const finalNodeIds = new Set(rawData.nodes.filter(node => !sourceIds.has(node.id)).map(n => n.id));
 
     // Preparar nodos con posiciones fijas y colores por rol
     const nodes = new vis.DataSet(
-      rawData.nodes.map(node => {
+      rawData.nodes.map((node, index) => {
         const isRoot = node.id === rootNode.id;
         const isFinal = finalNodeIds.has(node.id);
+        // Azul para el inicialmente, rojo para finales, verde para intermedios.
         const nodeColor = isRoot ? '#1976d2' : (isFinal ? '#d32f2f' : '#2e7d32');
         
+        // Obtener posición precalculada si ninguna, usar 0,0
         const pos = nodePositions.get(node.id) || { x: 0, y: 0 };
         
+
         return {
           id: node.id,
           label: node.label,
@@ -138,31 +144,38 @@
           color: {
             background: nodeColor,
             border: '#333',
-            highlight: { background: nodeColor, border: '#ff0000' }
+            highlight: { background: nodeColor, border: '#FF520F' }
           },
           font: { size: 26, color: '#fff', bold: isRoot },
           shape: 'box',
           x: pos.x,
           y: pos.y,
-          fixed: true
+          nodeIndex: index, // Guardar índice para recuperar nodo original
+          //fixed: true
         };
       })
     );
     
+    // Segun el valor BTC movidos, el grosor la arista será mayor o menor
     // Calcular rango de valores BTC para normalizar grosor
+    // Recuperamos todos los valores BTC
     const btcValues = rawData.links.map(link => link.value_btc || 0);
+    // Obtener el valor máximo de BTC
+    // ... sirve para hacer spread del array de valores y pasar una lista de argumentos a Math.max
     const maxBtc = Math.max(...btcValues);
     
     // Preparar aristas
     const edges = new vis.DataSet(
-      rawData.links.map(link => {
+      rawData.links.map((link, index) => {
         // Normalizar grosor: mapear valor BTC a rango 1-5
+        // valor fijo de 2 si maxBtc es 0 (evitar NaN)
         const normalizedWidth = maxBtc > 0 
           ? 1 + (link.value_btc / maxBtc) * 4 
           : 2;
         
         // Construir label con BTC redondeado a 4 decimales
         const btcLabel = link.value_btc.toFixed(4);
+        // Titulo a mostrar sobre las aristas
         const displayLabel = `${btcLabel} BTC\n(path: ${link.path_id}, hop: ${link.hop})`;
         
         return {
@@ -171,24 +184,24 @@
           label: displayLabel,
           title: `BTC: ${link.value_btc.toFixed(8)}\nTxID: ${link.txid}`,
           color: link.follow ? '#333' : '#ccc',
-          dashes: !link.follow,
-          width: normalizedWidth,
-          arrows: 'to',
-          smooth: { type: 'cubicBezier' },
-          font: { size: 20, align: 'horizontal' }
+          dashes: !link.follow, // Si es final muestra el trazo punteado, si no es final línea continua
+          width: normalizedWidth, // grosor
+          arrows: 'to', // flecha en dirección al target
+          font: { size: 20, align: 'horizontal' },
+          linkIndex: index // Guardar índice para recuperar link original
         };
       })
     );
     
     // Configuración con posiciones fijas
     const options = {
-      physics: { enabled: false },
+      physics: { enabled: false }, // Desactivar física para usar posiciones fijas
       interaction: {
-        hover: true,
-        dragNodes: true,
-        dragView: true
+        hover: true, // resaltar al pasar el ratón
+        dragNodes: true, // permitir arrastrar nodos
+        dragView: true // permitir arrastrar vista
       },
-      edges: {
+      edges: { // suavizar aristas por si hay muchas
         smooth: {
           type: 'cubicBezier',
           roundness: 0.4
@@ -197,26 +210,36 @@
     };
     
     // Crear red
+    // Obtener contenedor donde renderizar el grafo
     const container = document.getElementById('network');
+    // Crear la red vis.js
     const network = new vis.Network(container, { nodes, edges }, options);
     
     // Ajustar vista
-    network.fit();
+    network.fit(); // Ajustar vista para mostrar todo el grafo
     
-    // Modal Bootstrap (sencillo)
+    // Configurar modal Bootstrap para mostrar detalles al hacer click sobre nodos/aristas
     const detailsModalEl = document.getElementById('detailsModal');
     const detailsModalBody = document.getElementById('detailsModalBody');
     const detailsModal = detailsModalEl ? new bootstrap.Modal(detailsModalEl) : null;
     
     // Click: mostrar detalles en modal (simple)
     network.on('click', function(params) {
-      // Click en nodo
+      //console.log('Modal Click event:', params);
+      //Al hacer click sobre cualquier parte del grafo, si es sobre un nodo nos devuelve params.nodes con el ID del nodo
+      // y las arisstas que tocan el nodo en params.edges con los IDs de las aristas
+      // Si el params del clcik tiene nodes, es que se hizo click sobre un nodo
       if (params.nodes && params.nodes.length > 0) {
+        // Recuperamos el ID del nodo clicado
         const nodeId = params.nodes[0];
-        const node = rawData.nodes.find(n => n.id === nodeId);
+        // Recuperar nodo original usando el índice guardado
+        const nodeData = nodes.get(nodeId);
+        const node = rawData.nodes[nodeData.nodeIndex];
         if (node) {
+          // Contar enlaces entrantes y salientes
           const outgoing = rawData.links.filter(l => l.source === node.id);
           const incoming = rawData.links.filter(l => l.target === node.id);
+          // Construir HTML con detalles del nodo que mostrar en el modal
           const html = `
             <div class="mb-2"><strong>${node.label}</strong></div>
             <div><strong>Address:</strong> ${node.address}</div>
@@ -227,6 +250,7 @@
             <div><strong>Description:</strong> ${node.description || ''}</div>
             <div><strong>Outgoing links:</strong> ${outgoing.length}</div>
             <div><strong>Incoming links:</strong> ${incoming.length}</div>`;
+          // Mostrar en modal
           if (detailsModal) {
             detailsModalBody.innerHTML = html;
             detailsModal.show();
@@ -234,44 +258,28 @@
         }
         return;
       }
-      // Click en arista
+      // Si se hace click sobre una arista solo hay params.edges con IDs de las aristas
       if (params.edges && params.edges.length > 0) {
         const edgeId = params.edges[0];
         // Obtener la arista desde el DataSet de vis.js
         const edgeData = edges.get(edgeId);
-        // Buscar en rawData.links el link que corresponde (por from, to, y txid)
-        const link = rawData.links.find(l => 
-          l.source === edgeData.from && 
-          l.target === edgeData.to && 
-          l.txid === edgeData.title?.split('TxID: ')[1]?.split('\n')[0]
-        );
+        // Recuperar link original usando el índice guardado
+        const link = rawData.links[edgeData.linkIndex];
         
-        // Si no encuentra por esa lógica, intenta por from+to (puede haber múltiples si misma tx)
-        const fallbackLink = link || rawData.links.find(l => 
-          l.source === edgeData.from && 
-          l.target === edgeData.to
-        );
-        
-        const displayLink = fallbackLink || { error: 'No se encontraron detalles' };
-        if (displayLink && detailsModal) {
-          let html = '';
-          if (displayLink.error) {
-            html = `<div style="color: red;"><strong>${displayLink.error}</strong></div>`;
-          } else {
-            html = `
+        if (link && detailsModal) {
+          const html = `
             <div class="mb-2"><strong>Transacción</strong></div>
-            <div><strong>From:</strong> ${displayLink.source}</div>
-            <div><strong>To:</strong> ${displayLink.target}</div>
-            <div><strong>BTC:</strong> ${displayLink.value_btc.toFixed(8)}</div>
-            <div><strong>Path:</strong> ${displayLink.path_id}</div>
-            <div><strong>Hop:</strong> ${displayLink.hop}</div>
-            <div><strong>TxID:</strong> ${displayLink.txid}</div>
-            <div><strong>Fecha:</strong> ${displayLink.datetime}</div>
-            <div><strong>Follow:</strong> <span style="color: ${displayLink.follow ? 'green' : 'red'}">${displayLink.follow ? '✓ Sí' : '✗ No'}</span></div>
-            <div><strong>BTC no seguidos:</strong> ${displayLink.btc_not_followed?.toFixed ? displayLink.btc_not_followed.toFixed(8) : displayLink.btc_not_followed || 0}</div>
-            <div><strong>BTC consolidados (externos):</strong> ${displayLink.btc_added_from_others?.toFixed ? displayLink.btc_added_from_others.toFixed(8) : displayLink.btc_added_from_others || 0}</div>
-            <div><strong>Notas:</strong> ${displayLink.notes || '(ninguna)'}</div>`;
-          }
+            <div><strong>From:</strong> ${link.source}</div>
+            <div><strong>To:</strong> ${link.target}</div>
+            <div><strong>BTC:</strong> ${link.value_btc.toFixed(8)}</div>
+            <div><strong>Path:</strong> ${link.path_id}</div>
+            <div><strong>Hop:</strong> ${link.hop}</div>
+            <div><strong>TxID:</strong> ${link.txid}</div>
+            <div><strong>Fecha:</strong> ${link.datetime}</div>
+            <div><strong>Follow:</strong> <span style="color: ${link.follow ? 'green' : 'red'}">${link.follow ? '✓ Sí' : '✗ No'}</span></div>
+            <div><strong>BTC no seguidos:</strong> ${link.btc_not_followed?.toFixed ? link.btc_not_followed.toFixed(8) : link.btc_not_followed || 0}</div>
+            <div><strong>BTC consolidados (externos):</strong> ${link.btc_added_from_others?.toFixed ? link.btc_added_from_others.toFixed(8) : link.btc_added_from_others || 0}</div>
+            <div><strong>Notas:</strong> ${link.notes || '(ninguna)'}</div>`;
           detailsModalBody.innerHTML = html;
           detailsModal.show();
         }
