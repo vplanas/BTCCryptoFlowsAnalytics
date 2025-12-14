@@ -48,6 +48,7 @@ def main():
             return
         
         root_address = cached_data['root_address']
+        start_block = cached_data.get('start_block', 0)
         records = cached_data['records']
         graph_data = cached_data['graph']
         
@@ -58,11 +59,11 @@ def main():
         if not args.address or not args.block:
             # Casos de prueba (descomentar el que se quiera usar):
             # Suplantación:
-            root_address = "bc1q8ssu2xvl8gj3qctz9d3qjfkcmdyxledp40hyp6"
-            start_block = 920802
+            #root_address = "bc1q8ssu2xvl8gj3qctz9d3qjfkcmdyxledp40hyp6"
+            #tart_block = 920802
             # Darkside - Colonial Pipeline:
-            #root_address = "15JFh88FcE4WL6qeMLgX5VEAFCbRXjc9fr"
-            #start_block = 682599
+            root_address = "15JFh88FcE4WL6qeMLgX5VEAFCbRXjc9fr"
+            start_block = 682599
             # Otro ransomware:
             #root_address = "bc1qazjzkd4e572p8c2n4u0gaewhrwe8xxpaklq6fv"
             #start_block = 777026
@@ -87,20 +88,26 @@ def main():
         graph_data = tracer.get_graph_data()
         
         # Guardamos en cache para no tener que volver a analizar
-        records_cache_file = save_cache(records, graph_data, root_address)
+        records_cache_file = save_cache(records, graph_data, root_address, start_block)
         logger.info(f"Cache guardado en: {records_cache_file}")
     
-    # Exportar resultados
-    fund_flow_records_csv_path = Path('output/fund_flow_records.csv')
+    # Crear carpeta de salida específica para esta investigación
+    output_dir_name = f"{root_address[:3]}...{root_address[-3:]}_{start_block}"
+    output_dir = Path('output') / output_dir_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Carpeta de salida: {output_dir}")
+    
+    # Exportar resultados en la carpeta específica
+    fund_flow_records_csv_path = output_dir / 'fund_flow_records.csv'
     export_fund_flow_records_to_csv(records, str(fund_flow_records_csv_path))
 
-    graph_json_path = Path('output/fund_flow_graph.json')
+    graph_json_path = output_dir / 'fund_flow_graph.json'
     with open(graph_json_path, 'w', encoding='utf-8') as f:
         json.dump(graph_data, f, indent=2, ensure_ascii=False)
     
     # Generar HTML interactivo del grafo
     html_generator = GraphHTMLGenerator(graph_data)
-    html_generator.generate('output/fund_flow_graph.html')
+    html_generator.generate(str(output_dir / 'fund_flow_graph.html'))
     
     # Mostrar resumen (solo si hicimos análisis nuevo)
     if tracer:

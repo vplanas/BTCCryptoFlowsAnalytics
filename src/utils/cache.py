@@ -10,7 +10,7 @@ logger = get_logger(__name__)
 
 CACHE_DIR = "output/cache"
 
-def save_cache(records: List[FundFlowRecord], graph_data: dict, root_address: str, cache_file: str = None):
+def save_cache(records: List[FundFlowRecord], graph_data: dict, root_address: str, start_block: int = 0, cache_file: str = None):
     """Guarda los registros y el grafo en cache (JSON)."""
     os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -27,6 +27,7 @@ def save_cache(records: List[FundFlowRecord], graph_data: dict, root_address: st
 
         cache_data = {
             'root_address': root_address,
+            'start_block': start_block,
             'timestamp': datetime.now().isoformat(),
             'total_records': len(records),
             'records': records_dict,
