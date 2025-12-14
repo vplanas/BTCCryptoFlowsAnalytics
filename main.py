@@ -21,7 +21,7 @@ def main():
     parser.add_argument('--clear-cache', action='store_true', help='Clear all cache files')
     
     #Ejemplo de uso:
-        # python main.py bc1qexampleaddress 920802
+        # python main.py bc1q8ssu2xvl8gj3qctz9d3qjfkcmdyxledp40hyp6 920802
         # python main.py --from-cache cache_abc123.json
         # python main.py --list-cache
         # python main.py --clear-cache
