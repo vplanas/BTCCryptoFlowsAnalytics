@@ -92,6 +92,7 @@ def load_cache(cache_file: str) -> dict:
             
         result = {
             'root_address': cache_data.get('root_address'),
+            'start_block': cache_data.get('start_block', 0),
             'timestamp': cache_data.get('timestamp'),
             'records': records,
             'graph': cache_data.get('graph'),
@@ -100,7 +101,7 @@ def load_cache(cache_file: str) -> dict:
         }
 
         logger.info(f"{len(records)} registros cargados desde cache: {cache_file}")
-        logger.info(f"Root address: {result['root_address']}, Timestamp: {result['timestamp']}")
+        logger.info(f"Root address: {result['root_address']}, Start block: {result['start_block']}, Timestamp: {result['timestamp']}")
         return result
     except Exception as e:
         logger.error(f"Error cargando cache: {e}")
