@@ -7,7 +7,7 @@
 Herramientas para el análisis de transacciones Bitcoin utilizadas en casos de Ciberdelincuencia.
 
 ### Fuente de direcciones Bitcoin
-Se han utilizado los datasets recopilados por tercersos de estos trabajos:
+Se han utilizado los datasets recopilados por terceros de estos trabajos:
   - https://ransomwhe.re/#browse -> Cable, Jack. (2024). Ransomwhere: A Crowdsourced Ransomware Payment Dataset (1.1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.6512122
 
   - https://github.com/cablej/showing-the-receipts -> Cable, J., Gray, I. W., & McCoy, D. (2024). Showing the Receipts: Understanding the Modern Ransomware Ecosystem (No. arXiv:2408.15420). arXiv. https://doi.org/10.48550/arXiv.2408.15420
