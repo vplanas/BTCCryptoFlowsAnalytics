@@ -11,12 +11,13 @@ logger = get_logger(__name__)
 class GraphHTMLGenerator:
     """Genera HTML del grafo con vis.js y Jinja2."""
 
-    def __init__(self, graph_data: Dict[str, Any], title: str = "Bitcoin Flow Graph"):
+    def __init__(self, root_address: str, graph_data: Dict[str, Any], title: str = "Bitcoin Flow Graph"):
         """Inicializa con los datos del grafo y el título."""
         # Normalizar el formato: networkx usa 'edges', vis.js usa 'links'
         if 'edges' in graph_data and 'links' not in graph_data:
             graph_data['links'] = graph_data['edges']
         
+        self.root_address = root_address
         self.graph_data = graph_data
         self.title = title
 
@@ -38,7 +39,8 @@ class GraphHTMLGenerator:
         # Renderizar plantilla con contexto
         html_content = template.render(
             title=self.title,
-            graph_data_json=graph_data_json
+            graph_data_json=graph_data_json,
+            root_address=self.root_address
         )
 
         # Escribir el HTML a archivo

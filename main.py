@@ -106,8 +106,9 @@ def main():
         json.dump(graph_data, f, indent=2, ensure_ascii=False)
     
     # Generar HTML interactivo del grafo
-    html_generator = GraphHTMLGenerator(graph_data)
+    html_generator = GraphHTMLGenerator(root_address, graph_data, title="Bitcoin Fund Flow Graph")
     html_generator.generate(str(output_dir / 'fund_flow_graph.html'))
+    logger.info(f"Grafo HTML para dirección raíz {root_address} generado en: {output_dir / 'fund_flow_graph.html'}")
     
     # Mostrar resumen (solo si hicimos análisis nuevo)
     if tracer:
