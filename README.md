@@ -6,6 +6,51 @@
 
 Herramientas para el análisis de transacciones Bitcoin utilizadas en casos de Ciberdelincuencia.
 
+## Instalación y configuración
+
+### 1. Crear y activar el entorno conda
+```bash
+conda create -n tfg-env python=3.11
+conda activate tfg-env
+```
+
+### 2. Instalar dependencias
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Configurar las API keys
+Crear un archivo `.env` en la raíz del proyecto con las siguientes claves:
+```
+BLOCKCHAIR_API_KEY=tu_clave_de_blockchair_aqui
+BLOCKCYPHER_API_KEY=tu_clave_de_blockcypher_aqui
+```
+
+### 4. Ejecución
+```bash
+# Analizar una dirección desde un bloque específico
+python main.py <direccion_bitcoin> <numero_bloque>
+
+# Ejemplos:
+python main.py bc1q8ssu2xvl8gj3qctz9d3qjfkcmdyxledp40hyp6 920802
+python main.py 15JFh88FcE4WL6qeMLgX5VEAFCbRXjc9fr 682599
+
+# Cargar resultados desde cache
+python main.py --from-cache output/cache/flow_records_<hash>.json
+
+# Listar archivos en cache
+python main.py --list-cache
+
+# Limpiar cache
+python main.py --clear-cache
+```
+
+Los resultados se exportan en `output/<direccion>_<bloque>/`:
+- `fund_flow_records.csv`: Registros de todos los movimientos detectados
+- `fund_flow_graph.json`: Datos del grafo en formato JSON
+- `fund_flow_graph.html`: Visualización interactiva del grafo
+- `trace_<timestamp>.log`: Log completo de la ejecución
+
 ### Fuente de direcciones Bitcoin
 Se han utilizado los datasets recopilados por terceros de estos trabajos:
   - https://ransomwhe.re/#browse -> Cable, Jack. (2024). Ransomwhere: A Crowdsourced Ransomware Payment Dataset (1.1.0) [Data set]. Zenodo. https://doi.org/10.5281/zenodo.6512122
