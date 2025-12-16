@@ -13,7 +13,7 @@ if not BLOCKCYPHER_API_KEY:
     raise ValueError("Falta BLOCKCYPHER_API_KEY en el .env")
 
 # Parámetros del rastreo
-THRESHOLD = 0.05  # 5% del total de fondos que se siguen este hop
+THRESHOLD = 0.10  # 10% del total de fondos que se siguen este hop
 MAX_HOPS = 9
 
 # Niveles de log por módulo

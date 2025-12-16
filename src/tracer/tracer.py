@@ -57,6 +57,7 @@ class Tracer:
         self.G = nx.DiGraph()
         self.next_path_id = 0
         self.btc_not_followed_outputs = []
+        self.change_utxos = {}  # Cambios detectados por dirección para trazarlos después
 
     def trace(self, address: str, start_block: int = 0, hop: int = 1, following_btcs: float = 0.0, path: int = 0, previous_tx_hash: str = None, previous_vout: int = None):
         """
@@ -271,7 +272,8 @@ class Tracer:
         Encuentra qué outputs hay que seguir (los que superen el umbral).
         
         Mira las txs donde from_address gasta BTC, y devuelve los outputs que superan
-        el threshold. Si previous_tx_hash no es None, solo mira txs que gasten ese UTXO concreto.
+        el threshold. Si previous_tx_hash no es None, busca la tx que gasta ese UTXO y después
+        procesa el resto de txs sin filtro (para captar cambios y gastos posteriores).
         
         Returns: (outputs_a_seguir, outputs_posteriores, btc_no_seguidos)
         """
@@ -279,6 +281,13 @@ class Tracer:
         txs_outputs_after_flow = []
         btc_output_accumulated = 0
         btc_not_followed = 0
+
+        # UTXOs válidos a gastar en esta dirección: Son los UTXOS que venimos siguiendo y añadimos los cambios previos
+        allowed_utxos = []
+        if previous_tx_hash is not None and previous_vout is not None:
+            allowed_utxos.append({'tx_hash': previous_tx_hash, 'vout': previous_vout})
+        change_candidates = self.change_utxos.get(from_address, [])
+        allowed_utxos.extend(change_candidates) # Añadimos cambios previos como UTXOs válidos
         
         txs.sort(key=lambda tx: tx.get('block_id', 0))  # Ordenamos por bloque
         
@@ -286,6 +295,7 @@ class Tracer:
             detalles = tx.get('details', {})
             inputs = detalles.get('inputs', [])
             outputs = detalles.get('outputs', [])
+            reserved_change = 0  # BTC que se quedan como change en esta tx (no asignables a otros outputs de la misma tx)
             
             # Convertimos la fecha a CET
             dt_naive = datetime.strptime(tx.get('time'), '%Y-%m-%d %H:%M:%S')
@@ -293,25 +303,37 @@ class Tracer:
 
             # Miramos si from_address está gastando en esta tx
             if any(inp.get('recipient') == from_address for inp in inputs):
-                # Si estamos siguiendo un UTXO concreto, verificamos que esta tx lo use
-                if previous_tx_hash and previous_vout is not None:
-                    uses_target_utxo = any(
-                        inp.get('previous_txid') == previous_tx_hash and
-                        inp.get('previous_output_index') == previous_vout
-                        for inp in inputs
-                    )
-                    if not uses_target_utxo:
-                        logger.debug(f"Tx {tx.get('hash')} no usa el UTXO que estamos siguiendo, skip")
+                # Si tenemos UTXOs concretos a vigilar (objetivo o cambios), solo procesamos si se gastan
+                matched_utxo = None
+                if allowed_utxos:
+                    for utxo in allowed_utxos:
+                        if any(inp.get('previous_txid') == utxo['tx_hash'] and inp.get('previous_output_index') == utxo['vout'] for inp in inputs):
+                            matched_utxo = utxo
+                            break
+                    if not matched_utxo:
+                        logger.debug(f"Tx {tx.get('hash')} no gasta UTXO objetivo/cambio, skip")
                         continue
-                    else:
-                        logger.debug(f"Tx {tx.get('hash')} sí usa el UTXO {previous_tx_hash}:{previous_vout}")
+                    # Si era un cambio almacenado, lo retiramos de la lista global para no recontarlo
+                    if matched_utxo in change_candidates:
+                        change_candidates.remove(matched_utxo)
+                        self.change_utxos[from_address] = change_candidates
+                
+                # Determinar el presupuesto disponible para esta tx
+                if matched_utxo:
+                    # Si gastamos un UTXO específico, el presupuesto es solo el valor de ese UTXO
+                    available_budget = matched_utxo.get('value_btc', btc_received) - btc_output_accumulated
+                    logger.debug(f"Tx gasta UTXO específico {matched_utxo['tx_hash']}:{matched_utxo['vout']} con {matched_utxo.get('value_btc', btc_received):.10f} BTC")
+                else:
+                    # Sin UTXO específico, usamos btc_received + consolidación
+                    btc_consolidation = self.__calculate_consolidation(inputs, from_address)
+                    available_budget = btc_received + btc_consolidation - btc_output_accumulated
                 
                 # Si ya gastamos todo lo que íbamos siguiendo, esta tx ya no nos interesa
-                if btc_output_accumulated >= btc_received:
-                    logger.debug(f"Ya gastamos todo ({btc_output_accumulated:.10f} >= {btc_received:.10f}), skip")
+                if available_budget <= 0:
+                    logger.debug(f"Ya gastamos todo, skip")
                     continue
                 
-                # Ver cuántos BTC se añaden de otras direcciones (consolidación)
+                # Ver cuántos BTC se añaden de otras direcciones (solo para logging)
                 btc_consolidation = self.__calculate_consolidation(inputs, from_address)
                 
                 # Miramos cada output
@@ -321,43 +343,55 @@ class Tracer:
                     recipient = outp.get('recipient')
                     
                     # Ignoramos outputs que son change (vuelven a la misma dirección)
-                    # Importante: no descontamos este BTC del acumulado para no perder cobertura
+                    # NO descontamos este BTC del acumulado porque no se pierde del flujo
                     if recipient == from_address:
-                        logger.debug(f"Output a {recipient} es change, lo ignoramos ({btc_out:.10f} BTC)")
-                        # No sumamos al acumulado ni a no-seguidos; solo lo saltamos
+                        reserved_change += btc_out
+                        logger.debug(f"Output a {recipient} es change, lo reservamos ({btc_out:.10f} BTC) para txs posteriores")
+                        change_info = {
+                            'tx_hash': tx.get('hash'),
+                            'vout': out_index,
+                            'value_btc': btc_out,
+                            'block_id': tx.get('block_id'),
+                            'datetime_CET': dt_cet
+                        }
+                        self.change_utxos.setdefault(from_address, []).append(change_info)
+                        # Añadir este cambio a la lista de UTXOs permitidos para txs posteriores de esta dirección
+                        allowed_utxos.append(change_info)
                         continue
                     
-                    remaining_to_spend = btc_received - btc_output_accumulated
-                    logger.debug(f"Output a {recipient}: {btc_out:.10f} BTC (acumulado: {btc_output_accumulated:.10f}, queda: {remaining_to_spend:.10f})")
+                    remaining_to_spend = available_budget
+                    logger.debug(f"Output a {recipient}: {btc_out:.10f} BTC (acumulado: {btc_output_accumulated:.10f}, reservado change: {reserved_change:.10f}, queda: {remaining_to_spend:.10f}, consolida: {btc_consolidation:.10f})")
                     
                     if remaining_to_spend > 0:
+                        follow_amount = min(btc_out, remaining_to_spend)
                         if btc_out / total_input_btc > self.threshold:
-                            logger.debug(f"Output supera umbral {self.threshold*100}%, lo seguimos")
-                            # Añadir la dirección de la salida y la cantidad recibida a la lista de seguimiento como un diccionario
+                            logger.debug(f"Output supera umbral {self.threshold*100}%, lo seguimos por {follow_amount:.10f} BTC (de {btc_out:.10f})")
+                            # Añadir la dirección de la salida y la cantidad que seguimos (capada al presupuesto restante)
                             txs_outputs_to_follow.append({
                                 'tx_hash': tx.get('hash'),
                                 'recipient': recipient,
                                 'value': outp.get('value', 0),
-                                'value_btc': btc_out,
+                                'value_btc': follow_amount,
                                 'value_usd': outp.get('value_usd', 0),
                                 'block_id': tx.get('block_id'),
                                 'datetime_CET': dt_cet,
                                 'btc_added_from_others': btc_consolidation,
-                                'vout': out_index
+                                'vout': out_index,
+                                'output_total_btc': btc_out  # para saber el total original
                             })
                         else:
                             logger.debug(f"Output no supera umbral, no lo seguimos")
-                            btc_not_followed += btc_out
+                            btc_not_followed += follow_amount
                             self.btc_not_followed_outputs.append({
                                 'from_address': from_address,
                                 'to_address': recipient,
-                                'btc': btc_out,
+                                'btc': follow_amount,
                                 'reason': f'No supera umbral {self.threshold*100:.1f}%',
                                 'tx_hash': tx.get('hash'),
                                 'block_id': tx.get('block_id'),
                                 'datetime': dt_cet.strftime('%Y-%m-%d %H:%M:%S')
                             })
-                        btc_output_accumulated += btc_out
+                        btc_output_accumulated += follow_amount
                     else:
                         logger.debug(f"Ya no quedan BTC por seguir, pero registramos este output")
                         txs_outputs_after_flow.append({
