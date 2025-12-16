@@ -2,7 +2,7 @@ import sys
 import json
 import argparse
 from pathlib import Path
-from src.utils.logger import get_logger
+from src.utils.logger import get_logger, setup_file_logging
 from src.tracer.tracer import Tracer
 from src.export.export import export_fund_flow_records_to_csv
 from src.visualization.graph_html_generator import GraphHTMLGenerator
@@ -59,11 +59,11 @@ def main():
         if not args.address or not args.block:
             # Casos de prueba (descomentar el que se quiera usar):
             # Suplantación:
-            #root_address = "bc1q8ssu2xvl8gj3qctz9d3qjfkcmdyxledp40hyp6"
-            #tart_block = 920802
+            root_address = "bc1q8ssu2xvl8gj3qctz9d3qjfkcmdyxledp40hyp6"
+            start_block = 920802
             # Darkside - Colonial Pipeline:
-            root_address = "15JFh88FcE4WL6qeMLgX5VEAFCbRXjc9fr"
-            start_block = 682599
+            #root_address = "15JFh88FcE4WL6qeMLgX5VEAFCbRXjc9fr"
+            #start_block = 682599
             # Otro ransomware:
             #root_address = "bc1qazjzkd4e572p8c2n4u0gaewhrwe8xxpaklq6fv"
             #start_block = 777026
@@ -72,7 +72,17 @@ def main():
         else:
             root_address = args.address
             start_block = args.block
-        
+    
+    # Crear carpeta de salida específica para esta investigación y configurar logging
+    output_dir_name = f"{root_address[:3]}...{root_address[-3:]}_{start_block}"
+    output_dir = Path('output') / output_dir_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+    setup_file_logging(str(output_dir))
+    
+    logger.info(f"Carpeta de salida: {output_dir}")
+    
+    # Si cargamos desde cache, ya tenemos los datos; si no, hacemos el análisis
+    if not args.from_cache:
         logger.info(f"{'*'*20} EMPEZANDO ANÁLISIS: {root_address} {'*'*20}")
         
         tracer = Tracer(
@@ -90,12 +100,6 @@ def main():
         # Guardamos en cache para no tener que volver a analizar
         records_cache_file = save_cache(records, graph_data, root_address, start_block)
         logger.info(f"Cache guardado en: {records_cache_file}")
-    
-    # Crear carpeta de salida específica para esta investigación
-    output_dir_name = f"{root_address[:3]}...{root_address[-3:]}_{start_block}"
-    output_dir = Path('output') / output_dir_name
-    output_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"Carpeta de salida: {output_dir}")
     
     # Exportar resultados en la carpeta específica
     fund_flow_records_csv_path = output_dir / 'fund_flow_records.csv'
