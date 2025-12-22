@@ -1,16 +1,20 @@
 import os
 import logging
+from typing import cast
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Cargar las API keys desde .env
+# Cargar las API keys desde .env verificamos que existen
 BLOCKCHAIR_API_KEY = os.getenv('BLOCKCHAIR_API_KEY')
 if not BLOCKCHAIR_API_KEY:
     raise ValueError("Falta BLOCKCHAIR_API_KEY en el .env")
+BLOCKCHAIR_API_KEY = cast(str, BLOCKCHAIR_API_KEY)
+
 BLOCKCYPHER_API_KEY = os.getenv('BLOCKCYPHER_API_KEY')
 if not BLOCKCYPHER_API_KEY:
     raise ValueError("Falta BLOCKCYPHER_API_KEY en el .env")
+BLOCKCYPHER_API_KEY = cast(str, BLOCKCYPHER_API_KEY)
 
 # Parámetros del rastreo
 THRESHOLD = 0.10  # 10% del total de fondos que se siguen este hop

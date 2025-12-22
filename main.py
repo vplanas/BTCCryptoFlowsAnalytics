@@ -88,8 +88,8 @@ def main():
         tracer = Tracer(
             root_address=root_address,
             threshold=THRESHOLD,
-            blockchair_api_key=BLOCKCHAIR_API_KEY,
-            blockcypher_api_key=BLOCKCYPHER_API_KEY,
+            blockchair_api_key=BLOCKCHAIR_API_KEY,  # type: ignore
+            blockcypher_api_key=BLOCKCYPHER_API_KEY,  # type: ignore
             maxhops=MAX_HOPS
         )
         tracer.trace(address=root_address, start_block=start_block)
